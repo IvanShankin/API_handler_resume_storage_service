@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+logs/auth_service.log
+.env
+.test.env
