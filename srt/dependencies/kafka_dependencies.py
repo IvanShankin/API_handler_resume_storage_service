@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -178,9 +179,10 @@ class ConsumerKafkaNotifications(ConsumerKafka):
         elif key == KEY_NEW_PROCESSING:
             new_record = Processing(
                 processing_id = data['processing_id'],
-                user_id = data['user_id'],
                 resume_id = data['resume_id'],
                 requirements_id = data['requirements_id'],
+                user_id = data['user_id'],
+                create_at = datetime.now(timezone.utc),
                 score = data['score'],
                 matches = data['matches'],
                 recommendation = data['recommendation'],

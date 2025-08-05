@@ -25,19 +25,12 @@ class ProcessingOut(BaseModel):
     resume_id: int
     requirements_id: int
     user_id: int
+    create_at: datetime
     score: int
     matches: List[str]
     recommendation: str
     verdict: str
 
-class ProcessingDetailOut(BaseModel):
-    processing_id: int
-    resume_id: int
-    requirements_id: int
-    user_id: int
-    score: int
-    matches: List[str]
-    recommendation: str
-    verdict: str
+class ProcessingDetailOut(ProcessingOut):
     resume: str
     requirements: str

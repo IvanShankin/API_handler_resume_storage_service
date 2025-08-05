@@ -39,6 +39,7 @@ class Processing(Base):
     resume_id = Column(Integer, ForeignKey('resume.resume_id'), nullable=False)
     requirements_id = Column(Integer, ForeignKey('requirements.requirements_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    create_at = Column(DateTime(timezone=True), nullable=False)
     score = Column(Integer, nullable=False)
     matches = Column(ARRAY(String), nullable=False)  # перечисление навыков которые совпадают требованию
     recommendation = Column(String(700), nullable=False)  # рекомендации по найму
