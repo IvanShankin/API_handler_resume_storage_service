@@ -63,7 +63,7 @@ async def get_current_user(
         raise InvalidCredentialsException
 
     # Конвертируем SQLAlchemy объект в словарь
-    user_dict = {"user_id": user.user_id,}
+    user_dict = {"user_id": user.user_id, 'username': user.username, 'full_name': user.full_name, 'created_at': user.created_at}
 
     # Конвертируем в Pydantic
     user_out = UserOut.model_validate(user_dict)

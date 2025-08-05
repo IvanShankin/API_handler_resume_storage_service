@@ -10,15 +10,15 @@ import sys
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from srt.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME,KEY_NEW_REQUIREMENTS, KEY_NEW_PROCESSING
+from srt.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, \
+    KEY_NEW_PROCESSING, MAX_STORAGE_TIME_DATA
 from srt.database.database import get_db
 from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import RedisWrapper
 
 load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
-KAFKA_TOPIC_FOR_AI_HANDLER = os.getenv('KAFKA_TOPIC_FOR_AI_HANDLER')
-KAFKA_TOPIC_FOR_NOTIFICATIONS = os.getenv('KAFKA_TOPIC_FOR_NOTIFICATIONS')
+KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA')
 
 admin_client = AdminClient({'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS})\
 
@@ -151,21 +151,30 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                 full_name = data['full_name'],
                 created_at = data['created_at']
             )
-            async with RedisWrapper() as redis:
-
-
         elif key == KEY_NEW_RESUME:
             new_record = Resume(
                 resume_id = data['resume_id'],
                 user_id = data['user_id'],
                 resume = data['resume']
             )
+            async with RedisWrapper() as redis:
+                redis.setex(
+                    f'resume:{data['resume_id']}',
+                    MAX_STORAGE_TIME_DATA,
+                    {'user_id': data['user_id'], 'resume': data['resume']}
+                )
         elif key == KEY_NEW_REQUIREMENTS:
             new_record = Requirements(
                 requirements_id = data['requirements_id'],
                 user_id = data['user_id'],
                 requirements = data['requirements']
             )
+            async with RedisWrapper() as redis:
+                redis.setex(
+                    f'requirements:{data['requirements_id']}',
+                    MAX_STORAGE_TIME_DATA,
+                    {'user_id': data['user_id'], 'requirements': data['requirements']}
+                )
         elif key == KEY_NEW_PROCESSING:
             new_record = Processing(
                 processing_id = data['processing_id'],
@@ -177,7 +186,6 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                 recommendation = data['recommendation'],
                 verdict = data['verdict'],
             )
-        
         if new_record:
             try:
                 db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
@@ -187,4 +195,4 @@ class ConsumerKafkaNotifications(ConsumerKafka):
             except Exception as e:
                 logger.error(f"Kafka error: {str(e)}")
 
-consumer_notifications = ConsumerKafkaNotifications(KAFKA_TOPIC_FOR_AI_HANDLER)
+consumer_notifications = ConsumerKafkaNotifications(KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA)
