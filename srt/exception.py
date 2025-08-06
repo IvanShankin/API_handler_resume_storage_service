@@ -11,6 +11,10 @@ class CorruptedFile(HTTPException):
     def __init__(self, file_name: str):
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Повреждённый Файл: {file_name}')
 
+class InvalidParameters(HTTPException):
+    def __init__(self):
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Используйте только один параметр: либо processing_id, либо requirements_id')
+
 class EmptyFileException(HTTPException):
     def __init__(self, file_name: str):
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Файл {file_name} пуст!')

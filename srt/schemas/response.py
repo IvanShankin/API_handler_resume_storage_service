@@ -27,10 +27,10 @@ class ProcessingOut(BaseModel):
     user_id: int
     create_at: datetime
     score: int
-    matches: List[str]
-    recommendation: str
     verdict: str
 
 class ProcessingDetailOut(ProcessingOut):
     resume: str
     requirements: str
+    matches: List[str] # это убрать
+    recommendation: str # это убрать

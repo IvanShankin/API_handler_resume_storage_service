@@ -1,5 +1,6 @@
+import json
 import os
-from typing import List, Annotated, Optional
+from typing import List, Annotated, Optional, Union
 
 from fastapi import Path, Query
 from sqlalchemy import text, select
@@ -8,15 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
 from srt.access import get_current_user
-from srt.config import logger, MAX_STORAGE_TIME_DATA
+from srt.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
 from srt.database.database import get_db
 from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import Redis, get_redis
-from srt.exception import InvalidCredentialsException, NoRights, NotFoundData
+from srt.exception import InvalidCredentialsException, NoRights, NotFoundData, InvalidParameters
+from srt.schemas.internal import ProcessingAndRequirementsID
 from srt.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
 
 router = APIRouter()
-
 
 async def chek_rights_redis(key: str, user_id: int, redis: Redis):
     """
@@ -28,41 +29,144 @@ async def chek_rights_redis(key: str, user_id: int, redis: Redis):
         raise NoRights()
     return data_redis
 
-async def search_processing(processing_id: int, user_id: int, redis: Redis, db: AsyncSession)->List[Processing]:
+async def validate_exclusive_params(
+    processing_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID обработки."),
+    requirements_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID требования.")
+)->ProcessingAndRequirementsID:
+    if processing_id and requirements_id:
+        raise InvalidParameters()
+
+    return ProcessingAndRequirementsID(
+        processing_id = processing_id,
+        requirements_id = requirements_id,
+    )
+
+
+# Вспомогательные функции
+def _prepare_processing_data(p: Processing) -> dict:
+    """Подготавливает данные для кеширования"""
+    return {
+        "processing_id": p.processing_id,
+        "resume_id": p.resume_id,
+        "requirements_id": p.requirements_id,
+        "user_id": p.user_id,
+        "create_at": p.create_at.isoformat(),
+        "score": p.score,
+        "matches": p.matches,
+        "recommendation": p.recommendation,
+        "verdict": p.verdict,
+        "resume": p.resume.resume if p.resume else None,  # Сохраняем только начало
+        "requirements": p.requirements.requirements if p.requirements else None
+    }
+
+def _convert_to_output_model(data: str, in_detail: bool)->Union[List[ProcessingOut], List[ProcessingDetailOut]]:
     """
-    Ищет processing сначала в Redis, потом в БД.
-    Если не найдено - вызывает NotFoundData().
-    Если user_id не совпадает - вызывает NoRights().
+    Конвертирует в выходную модель. Если необходима полная информация, то преобразует в ProcessingDetailOut, иначе в ProcessingOut
+    :param data: json строка в формате list[dict]
+    :param in_detail: флаг необходимости получения подробностей, если указать, то вернётся ProcessingDetailOut
     """
+    data: list[dict] = json.loads(data)
+    if in_detail:
+        # словарь конвертируем в ProcessingDetailOut
+        return [ProcessingDetailOut.model_validate(item) for item in data]
+    # создаём новый словарь, устанавливая некоторые данные на None (**item - распаковывает словарь)
+    return [ProcessingOut.model_validate({**item, "resume": None, "requirements": None}) for item in data]
+
+async def search_processing(
+        processing_id: Optional[int],
+        requirements_id: Optional[int],
+        user_id: int,
+        in_detail: bool,
+        redis: Redis,
+        db: AsyncSession
+    )->Union[List[ProcessingOut], List[ProcessingDetailOut]]:
+    """
+    Ищет данные об обработке в redis, если там не найдено, то ищет в БД. Кэширует данные в redis.
+    :return: Ввернёт List[ProcessingDetailOut], если установлен флаг in_detail, иначе List[ProcessingOut]
+    """
+
+    # Основной ключ для всех processing пользователя. Хранит в виде: [{...}, {...}]
+    main_redis_key = f"processing:{user_id}"
+
+    # Дополнительный ключ для частых запросов (кеш второго уровня).
+    # Хранит только обработки с данным requirements_id в виде: [{...}, {...}]
+    requirements_key = f"processing_requirements:{user_id}:{requirements_id}" if requirements_id else None
+
+    # проверка специализированных ключей
+    if requirements_key: # если необходимо изъять данные только с указанным requirements_id
+        data_redis = await redis.get(requirements_key)
+        if data_redis:
+            await redis.setex(
+                requirements_key,
+                STORAGE_TIME_DATA,
+                data_redis
+            )  # обновляем срок кэширования
+            return _convert_to_output_model(data_redis, in_detail)
+
+    # проверка основного кеша
+    data_redis = await redis.get(main_redis_key)
+    if data_redis:
+        processing = json.loads(data_redis) # преобразование с json в обычные данные (тут будет: [{...}, {...}])
+
+        # фильтрация данных с redis
+        if processing_id: # если необходимо вернуть только одно значение по переданному processing_id
+            for p in processing:
+                if p["processing_id"] == processing_id:
+                    processing = [p]
+                    break
+        elif requirements_id: # если необходимо вернуть значения только с requirements_id
+            processing = [p for p in processing if p["requirements_id"] == requirements_id]
+
+        if processing:
+            await redis.setex(
+                main_redis_key,
+                STORAGE_TIME_ALLS_DATA,
+                json.dumps(processing)
+            ) # обновляем срок кэширования
+            return _convert_to_output_model(json.dumps(processing), in_detail)
+
+    # запрос к БД
+    query = select(Processing).where(Processing.user_id == user_id)
+
     if processing_id:
-        # поиск в redis
-        redis_data = await chek_rights_redis(f"processing:{processing_id}", user_id, redis)
-        if redis_data:
-            cached_processing = ProcessingOut.model_validate_json(redis_data)  # Конвертируем в ProcessingOut
-            processing = [Processing(**cached_processing.model_dump())]  # Конвертируем в SQLAlchemy модель
-        else:
-            # поиск в БД
-            result_db = await db.execute(
-                select(Processing)
-                .where(Processing.processing_id == processing_id)
+        query = query.where(Processing.processing_id == processing_id)
+    elif requirements_id:
+        query = query.where(Processing.requirements_id == requirements_id)
+
+    result = await db.execute(query)
+    db_processing = result.scalars().all()
+
+    if not db_processing:
+        raise NotFoundData()
+
+    # подготовка и кэширование данных
+    processed_data = [_prepare_processing_data(p) for p in db_processing]
+
+    # основной кеш (все данные пользователя)
+    await redis.setex(
+        main_redis_key,
+        STORAGE_TIME_ALLS_DATA,
+        json.dumps(processed_data)
+    )
+
+    # кеш для частых запросов (по требованию)
+    if requirements_id:
+        req_processing = [p for p in processed_data if p["requirements_id"] == requirements_id]
+        if req_processing:
+            await redis.setex(
+                requirements_key,
+                STORAGE_TIME_DATA,
+                json.dumps(req_processing)
             )
-            processing = result_db.scalar_one_or_none()
-            if not processing:
-                raise NotFoundData()
-            if processing.user_id != user_id:
-                raise NoRights()
 
-            processing = [processing]
-    else:
-        result_db = await db.execute(
-            select(Processing)
-            .where(Processing.user_id == user_id)
-        )
-        processing = result_db.scalars().all()
-        if not processing:
-            raise NotFoundData()
+    # возврат результата
+    data_to_return = processed_data
+    if processing_id:
+        data_to_return = [p for p in processed_data if p["processing_id"] == processing_id]
+    elif requirements_id:
+        data_to_return = [p for p in processed_data if p["requirements_id"] == requirements_id]
 
-    return processing
+    return _convert_to_output_model(json.dumps(data_to_return), in_detail)
 
 @router.get("/health")
 async def health_check(
@@ -143,75 +247,30 @@ async def get_requirements(
 
 @router.get('/get_processing', response_model=List[ProcessingOut])
 async def get_processing(
-        processing_id: Optional[int]= Query(default=None, ge=1, description="Фильтр по ID обработки. Если не указан, возвращаются все обработки пользователя"),
+        param: ProcessingAndRequirementsID = Depends(validate_exclusive_params),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
 ):
     """
+    processing_id и requirements_id нельзя отправлять в одном запросе!
     :return: вернёт обработку без указания конкретных данных о резюме и требованиях, только их id
     """
-    processing = await search_processing(processing_id, current_user.user_id, redis, db)
+    processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, False, redis, db)
 
-    processing_out = None
-    processing_list = []
-    for p in processing:
-        processing_out = ProcessingOut(
-            processing_id=p.processing_id,
-            resume_id=p.resume_id,
-            requirements_id=p.requirements_id,
-            user_id=p.user_id,
-            create_at=p.create_at,
-            score=p.score,
-            matches=p.matches,
-            recommendation=p.recommendation,
-            verdict=p.verdict
-        )
-        processing_list.append(processing_out)
-
-    if processing_id:  # записываем в redis только если явно указали processing_id
-        await redis.setex(
-            f"processing:{processing_out.processing_id}",
-            MAX_STORAGE_TIME_DATA,
-            processing_out.model_dump_json()
-        )
-    return processing_list
+    return processing
 
 @router.get('/get_processing_detail', response_model=List[ProcessingDetailOut])
 async def get_processing_detail(
-        processing_id: Optional[int]= Query(default=None, ge=1, description="Фильтр по ID обработки. Если не указан, возвращаются все обработки пользователя"),
+        param: ProcessingAndRequirementsID = Depends(validate_exclusive_params),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
 ):
     """
+    processing_id и requirements_id нельзя отправлять в одном запросе!
     :return: вернёт обработку с полными данными о резюме и требованиях к нему
     """
-    processing = await search_processing(processing_id, current_user.user_id, redis, db)
+    processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, True, redis, db)
 
-    processing_out = None
-    processing_list = []
-    for p in processing:
-        processing_out = ProcessingDetailOut(
-            processing_id=p.processing_id,
-            resume_id=p.resume_id,
-            requirements_id=p.requirements_id,
-            user_id=p.user_id,
-            create_at=p.create_at,
-            score=p.score,
-            matches=p.matches,
-            recommendation=p.recommendation,
-            verdict=p.verdict,
-            resume=p.resume.resume,
-            requirements=p.requirements.requirements
-        )
-        processing_list.append(processing_out)
-
-    if processing_id:  # записываем в redis только если явно указали processing_id
-        await redis.setex(
-            f"processing:{processing_out.processing_id}",
-            MAX_STORAGE_TIME_DATA,
-            processing_out.model_dump_json()
-        )
-
-    return processing_list
+    return processing

@@ -2,7 +2,8 @@ from datetime import timedelta
 import logging
 from pathlib import Path
 
-MAX_STORAGE_TIME_DATA = timedelta(days=1)
+STORAGE_TIME_DATA = timedelta(days=1)
+STORAGE_TIME_ALLS_DATA = timedelta(hours=8) # используется для хранения всех данных о результатах обработки у конкретного пользователя
 
 MAX_CHAR_REQUIREMENTS = 5000
 MAX_CHAR_RESUME = 15000
