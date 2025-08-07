@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY, inspect
 from sqlalchemy.orm import relationship
 
 from srt.database.base import Base
@@ -33,6 +33,10 @@ class Requirements(Base):
     user = relationship("User", back_populates="requirements")
     processing = relationship("Processing", back_populates="requirements")
 
+    def to_dict(self):
+        """преобразует в словарь все колонки у выбранного объекта"""
+        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
+
 class Processing(Base):
     __tablename__ = "processing"
     processing_id = Column(Integer, primary_key=True, nullable=False)
@@ -49,3 +53,6 @@ class Processing(Base):
     resume = relationship("Resume", back_populates="processing")
     requirements = relationship("Requirements", back_populates="processing")
 
+    def to_dict(self):
+        """преобразует в словарь все колонки у выбранного объекта"""
+        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}

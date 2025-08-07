@@ -29,21 +29,22 @@ async def chek_rights_redis(key: str, user_id: int, redis: Redis):
         raise NoRights()
     return data_redis
 
-async def validate_exclusive_params(
+
+async def validate_processing_data(
     processing_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID обработки."),
     requirements_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID требования.")
 )->ProcessingAndRequirementsID:
+    """Проверяет данные направленные для получения обработки. Вызовет ошибку если будут переданы сразу два параметра"""
     if processing_id and requirements_id:
-        raise InvalidParameters()
+        raise InvalidParameters(['processing_id', 'requirements_id'])
 
     return ProcessingAndRequirementsID(
         processing_id = processing_id,
         requirements_id = requirements_id,
     )
 
-
-# Вспомогательные функции
-def _prepare_processing_data(p: Processing) -> dict:
+# вспомогательные функции для search_processing
+def prepare_processing_data(p: Processing) -> dict:
     """Подготавливает данные для кеширования"""
     return {
         "processing_id": p.processing_id,
@@ -55,7 +56,7 @@ def _prepare_processing_data(p: Processing) -> dict:
         "matches": p.matches,
         "recommendation": p.recommendation,
         "verdict": p.verdict,
-        "resume": p.resume.resume if p.resume else None,  # Сохраняем только начало
+        "resume": p.resume.resume if p.resume else None,
         "requirements": p.requirements.requirements if p.requirements else None
     }
 
@@ -140,7 +141,7 @@ async def search_processing(
         raise NotFoundData()
 
     # подготовка и кэширование данных
-    processed_data = [_prepare_processing_data(p) for p in db_processing]
+    processed_data = [prepare_processing_data(p) for p in db_processing]
 
     # основной кеш (все данные пользователя)
     await redis.setex(
@@ -209,45 +210,76 @@ async def get_resume(
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
 ):
-    redis_data = await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis)
+    redis_data = json.loads(await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis))
     if redis_data:
-        return ResumeOut(resume_id=resume_id, user_id=redis_data['user_id'], resume=redis_data['resume'])
+        await redis.setex(f'resume:{resume_id}', STORAGE_TIME_DATA, json.dumps(redis_data))
+        return ResumeOut(resume_id=redis_data['resume_id'], user_id=redis_data['user_id'], resume=redis_data['resume'])
 
     db_data = await db.execute(select(Resume).where(Resume.resume_id == resume_id))
     db_resume = db_data.scalar_one_or_none()
     if db_resume: # если данные с БД есть
         if db_resume.user_id == current_user.user_id:
+            await redis.setex(
+                f'resume:{resume_id}',
+                STORAGE_TIME_DATA,
+                json.dumps({'resume_id': db_resume.resume_id, 'user_id': db_resume.user_id, 'resume': db_resume.resume}))
             return ResumeOut(resume_id=db_resume.resume_id, user_id=db_resume.user_id, resume=db_resume.resume)
         else:
             raise NoRights()
     else:
         raise NotFoundData()
 
-@router.get("/get_requirements", response_model=RequirementsOut)
+@router.get("/get_requirements", response_model=List(RequirementsOut))
 async def get_requirements(
-        requirements_id: int,
+        requirements_id: Optional[int] = Query(None, ge=1, description="Указание конкретного требования (Опционально)"),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
 ):
-    redis_data = await chek_rights_redis(f'requirements:{requirements_id}', current_user.user_id, redis)
-    if redis_data:
-        return RequirementsOut(requirements_id=requirements_id, user_id=redis_data['user_id'], requirements=redis_data['requirements'])
+    """Если не указать requirements_id, то вернутся все требования данного пользователя"""
+    redis_key = f'requirements:{current_user.user_id}'
 
-    db_data = await db.execute(select(Requirements).where(Requirements.requirements_id == requirements_id))
-    db_requirements = db_data.scalar_one_or_none()
-    if db_requirements: # если данные с БД есть
-        if db_requirements.user_id == current_user.user_id:
-            return RequirementsOut(requirements_id=db_requirements.requirements_id, user_id=db_requirements.user_id, requirements=db_requirements.requirements)
-        else:
-            raise NoRights()
-    else:
+    try:
+        redis_data = json.loads(await chek_rights_redis(redis_key, current_user.user_id, redis))
+        if redis_data:
+            await redis.setex(redis_key, STORAGE_TIME_DATA, json.dumps(redis_data)) # продлеваем время хранения
+
+            if requirements_id: # если необходимо вернуть только одно значение
+                for req  in redis_data:
+                    if req ['requirements_id'] == requirements_id:
+                        return [RequirementsOut.model_validate(req)]
+                raise NotFoundData() # Необходимо вернуть ошибку, т.к. В redis хранятся все данные данного пользователя
+            else:
+                return [RequirementsOut.model_validate(req) for req in redis_data]
+    except Exception as e:
+        logger.error(f"Redis error: {e}")
+
+
+    # Запрос к БД
+    query = select(Requirements).where(Requirements.user_id == current_user.user_id)
+    if requirements_id:
+        query = query.where(Requirements.requirements_id == requirements_id)
+
+    result = await db.execute(query)
+    db_requirements = result.scalars().all()
+
+    if not db_requirements:
         raise NotFoundData()
+
+    # Подготовка данных для кэша и ответа
+    requirements_data = [req.to_dict() for req in db_requirements]
+    await redis.setex(
+        redis_key,
+        STORAGE_TIME_DATA,
+        json.dumps(requirements_data)
+    )
+
+    return [RequirementsOut.model_validate(req) for req in requirements_data]
 
 
 @router.get('/get_processing', response_model=List[ProcessingOut])
 async def get_processing(
-        param: ProcessingAndRequirementsID = Depends(validate_exclusive_params),
+        param: ProcessingAndRequirementsID = Depends(validate_processing_data),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
@@ -262,7 +294,7 @@ async def get_processing(
 
 @router.get('/get_processing_detail', response_model=List[ProcessingDetailOut])
 async def get_processing_detail(
-        param: ProcessingAndRequirementsID = Depends(validate_exclusive_params),
+        param: ProcessingAndRequirementsID = Depends(validate_processing_data),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
