@@ -1,20 +1,19 @@
 import json
 import os
-from typing import List, Annotated, Optional, Union
 
-from fastapi import Path, Query
+from typing import List, Annotated, Optional, Union
+from enum import Enum
+from fastapi import Path, Query, APIRouter, Depends, HTTPException, Form, Request
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from fastapi import APIRouter, Depends, HTTPException, Form, Request
 
 from srt.access import get_current_user
 from srt.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
 from srt.database.database import get_db
 from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import Redis, get_redis
-from srt.exception import InvalidCredentialsException, NoRights, NotFoundData, InvalidParameters
-from srt.schemas.internal import ProcessingAndRequirementsID
+from srt.exception import NoRights, NotFoundData, InvalidParameters
+from srt.schemas.request import ProcessingAndRequirementsID, SortField, SortOrder
 from srt.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
 
 router = APIRouter()
@@ -169,6 +168,35 @@ async def search_processing(
 
     return _convert_to_output_model(json.dumps(data_to_return), in_detail)
 
+async def sorted_list_processing(
+        processings: List[ProcessingOut],
+        sort_by: SortField = SortField.CREATE_AT,
+        order: SortOrder = SortOrder.DESC,
+)->List[ProcessingOut]:
+    """
+    Сортирует список обработок по указанному полю и порядку
+
+    :param processings: Список обработок для сортировки
+    :param sort_by: Поле для сортировки (create_at или score)
+    :param order: Порядок сортировки (asc или desc)
+    :return: Отсортированный список ProcessingOut
+    """
+    reverse = order == SortOrder.DESC
+
+    if sort_by == SortField.CREATE_AT:
+        return sorted(
+            processings,
+            key=lambda x: x.create_at, # отсортирует каждый элемент списка по переменной create_at
+            reverse=reverse
+        )
+    elif sort_by == SortField.SCORE:
+        return sorted(
+            processings,
+            key=lambda x: x.score,
+            reverse=reverse
+        )
+    return processings
+
 @router.get("/health")
 async def health_check(
         db: AsyncSession = Depends(get_db),
@@ -280,6 +308,8 @@ async def get_requirements(
 @router.get('/get_processing', response_model=List[ProcessingOut])
 async def get_processing(
         param: ProcessingAndRequirementsID = Depends(validate_processing_data),
+        sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
+        order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
@@ -290,11 +320,13 @@ async def get_processing(
     """
     processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, False, redis, db)
 
-    return processing
+    return sorted_list_processing(processing, sort_by, order)
 
 @router.get('/get_processing_detail', response_model=List[ProcessingDetailOut])
 async def get_processing_detail(
         param: ProcessingAndRequirementsID = Depends(validate_processing_data),
+        sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
+        order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
@@ -305,4 +337,4 @@ async def get_processing_detail(
     """
     processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, True, redis, db)
 
-    return processing
+    return sorted_list_processing(processing, sort_by, order)
