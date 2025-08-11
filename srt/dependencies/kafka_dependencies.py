@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from datetime import datetime, timezone
+from sys import exception
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ import sys
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from srt.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, \
     KEY_NEW_PROCESSING, STORAGE_TIME_DATA
@@ -21,7 +23,7 @@ from srt.requests.get import prepare_processing_data
 
 load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
-KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA')
+KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA')
 
 admin_client = AdminClient({'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS})\
 
@@ -102,7 +104,7 @@ class ConsumerKafka:
 
     # ЭТУ ФУНКЦИЮ ПЕРЕОБРЕДЕЛЯЕМ В НАСТЛЕДУЕМОМ КЛАССЕ,
     # ОНА БУДЕТ ВЫПОЛНЯТЬ ДЕЙСТВИЯ ПРИ ПОЛУЧЕНИИ СООБЩЕНИЯ
-    async def worker_topic(self, data:dict, key: str):
+    async def worker_topic(self, data:dict, key: str, message_id: str):
         pass
 
     async def error_handler(self, e):
@@ -123,9 +125,15 @@ class ConsumerKafka:
                 elif msg.error():
                     raise KafkaException(msg.error())
             else:
+                # проверка на обработанное сообщение
+                message_id = await self._get_message_uid(msg)
+                async with RedisWrapper() as redis:
+                    if await redis.get(f"processed_message:{message_id}"):
+                        continue
+
                 data = json.loads(msg.value().decode('utf-8'))
                 key = msg.key().decode('utf-8')
-                await self.worker_topic(data, key)
+                await self.worker_topic(data, key, message_id)
 
                 msg_count += 1
                 if msg_count % MIN_COMMIT_COUNT_KAFKA == 0:
@@ -141,35 +149,45 @@ class ConsumerKafka:
             self.consumer.close()
 
 # consumer для получения данные о новых запросах
-class ConsumerKafkaNotifications(ConsumerKafka):
+class ConsumerKafkaStorageService(ConsumerKafka):
     def __init__(self, topic: str):
         super().__init__(topic)
 
-    async def worker_topic(self, data: dict, key: str):
+    async def worker_topic(self, data: dict, key: str, message_id: str):
         new_record = None
         json_str = ''
         if key == KEY_NEW_USER: # при поступлении нового запроса
-            new_record = User(
-                user_id = data['user_id'],
-                username = data['username'],
-                full_name = data['full_name'],
-                created_at = data['created_at']
-            )
+            try:
+                new_record = User(
+                    user_id = data['user_id'],
+                    username = data['username'],
+                    full_name = data['full_name'],
+                    created_at = datetime.fromisoformat(data['created_at'])
+                )
+            except Exception as e:
+                logger.error(f"Kafka New User Error: {str(e)}")
         elif key == KEY_NEW_RESUME:
-            new_record = Resume(
-                resume_id = data['resume_id'],
-                user_id = data['user_id'],
-                resume = data['resume']
-            )
+            try:
+                new_record = Resume(
+                    resume_id = data['resume_id'],
+                    user_id = data['user_id'],
+                    resume = data['resume']
+                )
+            except Exception as e:
+                logger.error(f"ошибка при получении данных о резюме с kafka: {str(e)}")
+
             key = f'resume:{data['resume_id']}'
             json_str = json.dumps({'resume_id': data['resume_id'], 'user_id': data['user_id'], 'resume': data['resume']})
 
         elif key == KEY_NEW_REQUIREMENTS:
-            new_record = Requirements(
-                requirements_id = data['requirements_id'],
-                user_id = data['user_id'],
-                requirements = data['requirements']
-            )
+            try:
+                new_record = Requirements(
+                    requirements_id = data['requirements_id'],
+                    user_id = data['user_id'],
+                    requirements = data['requirements']
+                )
+            except Exception as e:
+                logger.error(f"ошибка при получении данных о требованиях с kafka: {str(e)}")
 
             key = f'requirements:{data['user_id']}'
 
@@ -201,29 +219,39 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                     json_str = json.dumps(requirements_data)
 
         elif key == KEY_NEW_PROCESSING:
-            new_processing = Processing(
-                processing_id = data['processing_id'],
-                resume_id = data['resume_id'],
-                requirements_id = data['requirements_id'],
-                user_id = data['user_id'],
-                create_at = datetime.now(timezone.utc),
-                score = data['score'],
-                matches = data['matches'],
-                recommendation = data['recommendation'],
-                verdict = data['verdict'],
-            )
-
-
-
+            try:
+                new_processing = Processing(
+                    processing_id = data['processing_id'],
+                    resume_id = data['resume_id'],
+                    requirements_id = data['requirements_id'],
+                    user_id = data['user_id'],
+                    create_at = datetime.now(timezone.utc),
+                    score = data['score'],
+                    matches = data['matches'],
+                    recommendation = data['recommendation'],
+                    verdict = data['verdict'],
+                )
+            except Exception as e:
+                logger.error(f"ошибка при получении данных о обработке с kafka: {str(e)}")
             db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
             db = await db_gen.__anext__()
             db.add(new_processing)
             await db.commit()
-            await db.refresh(new_processing)
+
+            # запрос в БД для получения resume и requirements
+            result = await db.execute(
+                select(Processing)
+                .options(
+                    selectinload(Processing.resume),
+                    selectinload(Processing.requirements)
+                )
+                .where(Processing.processing_id == new_processing.processing_id)
+            )
+            new_processing_full = result.scalar_one()
 
             # получаем связанные данные (резюме и требования)
-            resume_text = new_processing.resume.resume if new_processing.resume else None
-            requirements_text = new_processing.requirements.requirements if new_processing.requirements else None
+            resume_text = new_processing_full.resume.resume if new_processing_full.resume else None
+            requirements_text = new_processing_full.requirements.requirements if new_processing_full.requirements else None
 
             # подготовка данных для Redis
             processing_data = {
@@ -258,14 +286,13 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                             .where(Processing.user_id == data['user_id'])
                         )
                         db_processings = result.scalars().all()
-                        main_list = [(p) for p in db_processings]
+                        main_list = [await prepare_processing_data(p) for p in db_processings] # конвертируем в словарь
 
                     await redis.setex(
                         main_redis_key,
                         STORAGE_TIME_DATA,
                         json.dumps(main_list)
                     )
-
                     # обновляем кеш для конкретного требования
                     requirements_data = await redis.get(requirements_key)
                     if requirements_data:
@@ -279,7 +306,7 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                             .where(Processing.requirements_id == data['requirements_id'])
                         )
                         db_processings = result.scalars().all()
-                        req_list = [prepare_processing_data(p) for p in db_processings]
+                        req_list = [await prepare_processing_data(p) for p in db_processings]
 
                     await redis.setex(
                         requirements_key,
@@ -289,7 +316,6 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                 except Exception as e:
                     logger.error(f"Redis error: {str(e)}")
                     return
-
 
         if new_record: # запись в БД
             try:
@@ -301,11 +327,18 @@ class ConsumerKafkaNotifications(ConsumerKafka):
                 logger.error(f"Kafka error: {str(e)}")
 
         if key: # кэширование в redis
-            async with RedisWrapper() as redis:
-                await redis.setex(
-                    key,
-                    STORAGE_TIME_DATA,
-                    json_str
-                )
+            try:
+                async with RedisWrapper() as redis:
+                    await redis.setex(
+                        key,
+                        STORAGE_TIME_DATA,
+                        json_str
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при записи в redis: {str(e)}")
 
-consumer_notifications = ConsumerKafkaNotifications(KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA)
+        # записываем что сообщение обработано
+        async with RedisWrapper() as redis:
+            await redis.setex(f"processed_message:{message_id}", STORAGE_TIME_DATA, '_')
+
+consumer_notifications = ConsumerKafkaStorageService(KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA)

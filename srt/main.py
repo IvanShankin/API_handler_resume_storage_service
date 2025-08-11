@@ -9,14 +9,14 @@ from srt.requests import main_router
 from srt.dependencies import check_exists_topic
 
 load_dotenv()
-KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA')
+KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA')
 
 app = FastAPI()
 
 app.include_router(main_router)
 
 if __name__ == '__main__':
-    check_exists_topic([KAFKA_TOPIC_PRODUCER_FOR_UPLOADING_DATA])
+    check_exists_topic([KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA])
     asyncio.run(create_database())
     uvicorn.run(
         "main:app",

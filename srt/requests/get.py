@@ -6,6 +6,7 @@ from enum import Enum
 from fastapi import Path, Query, APIRouter, Depends, HTTPException, Form, Request
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from srt.access import get_current_user
 from srt.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
@@ -24,8 +25,10 @@ async def chek_rights_redis(key: str, user_id: int, redis: Redis):
     :returns Значение redis по данному ключу
     """
     data_redis = await redis.get(key)
-    if data_redis['user_id'] != user_id:
-        raise NoRights()
+    if data_redis:
+        data_redis = json.loads(data_redis)
+        if int(data_redis['user_id']) != user_id:
+            raise NoRights()
     return data_redis
 
 
@@ -43,14 +46,14 @@ async def validate_processing_data(
     )
 
 # вспомогательные функции для search_processing
-def prepare_processing_data(p: Processing) -> dict:
+async def prepare_processing_data(p: Processing) -> dict:
     """Подготавливает данные для кеширования"""
     return {
         "processing_id": p.processing_id,
         "resume_id": p.resume_id,
         "requirements_id": p.requirements_id,
         "user_id": p.user_id,
-        "create_at": p.create_at.isoformat(),
+        "create_at": p.create_at.strftime("%Y-%m-%d %H:%M:%S%z"),
         "score": p.score,
         "matches": p.matches,
         "recommendation": p.recommendation,
@@ -126,7 +129,8 @@ async def search_processing(
             return _convert_to_output_model(json.dumps(processing), in_detail)
 
     # запрос к БД
-    query = select(Processing).where(Processing.user_id == user_id)
+    query = (select(Processing).where(Processing.user_id == user_id)
+             .options(selectinload(Processing.resume), selectinload(Processing.requirements)))
 
     if processing_id:
         query = query.where(Processing.processing_id == processing_id)
@@ -140,7 +144,7 @@ async def search_processing(
         raise NotFoundData()
 
     # подготовка и кэширование данных
-    processed_data = [prepare_processing_data(p) for p in db_processing]
+    processed_data = [await prepare_processing_data(p) for p in db_processing]
 
     # основной кеш (все данные пользователя)
     await redis.setex(
@@ -238,7 +242,7 @@ async def get_resume(
         redis: Redis = Depends(get_redis),
         db: AsyncSession = Depends(get_db)
 ):
-    redis_data = json.loads(await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis))
+    redis_data = await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis)
     if redis_data:
         await redis.setex(f'resume:{resume_id}', STORAGE_TIME_DATA, json.dumps(redis_data))
         return ResumeOut(resume_id=redis_data['resume_id'], user_id=redis_data['user_id'], resume=redis_data['resume'])
@@ -257,7 +261,7 @@ async def get_resume(
     else:
         raise NotFoundData()
 
-@router.get("/get_requirements", response_model=List(RequirementsOut))
+@router.get("/get_requirements", response_model=List[RequirementsOut])
 async def get_requirements(
         requirements_id: Optional[int] = Query(None, ge=1, description="Указание конкретного требования (Опционально)"),
         current_user: User = Depends(get_current_user),
@@ -268,7 +272,7 @@ async def get_requirements(
     redis_key = f'requirements:{current_user.user_id}'
 
     try:
-        redis_data = json.loads(await chek_rights_redis(redis_key, current_user.user_id, redis))
+        redis_data = await chek_rights_redis(redis_key, current_user.user_id, redis)
         if redis_data:
             await redis.setex(redis_key, STORAGE_TIME_DATA, json.dumps(redis_data)) # продлеваем время хранения
 
@@ -320,7 +324,7 @@ async def get_processing(
     """
     processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, False, redis, db)
 
-    return sorted_list_processing(processing, sort_by, order)
+    return await sorted_list_processing(processing, sort_by, order)
 
 @router.get('/get_processing_detail', response_model=List[ProcessingDetailOut])
 async def get_processing_detail(
@@ -337,4 +341,4 @@ async def get_processing_detail(
     """
     processing = await search_processing(param.processing_id, param.requirements_id, current_user.user_id, True, redis, db)
 
-    return sorted_list_processing(processing, sort_by, order)
+    return await sorted_list_processing(processing, sort_by, order)
