@@ -15,6 +15,9 @@ KEY_NEW_RESUME = 'new_resume'
 KEY_NEW_REQUIREMENTS = 'new_requirements'
 KEY_NEW_PROCESSING = 'new_processing'
 
+KEY_DELETE_PROCESSING = 'delete_processing'
+KEY_DELETE_REQUIREMENTS = 'delete_requirements'
+
 LOG_DIR = Path("../logs")
 LOG_DIR.mkdir(exist_ok=True)
 

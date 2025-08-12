@@ -153,192 +153,227 @@ class ConsumerKafkaStorageService(ConsumerKafka):
     def __init__(self, topic: str):
         super().__init__(topic)
 
-    async def worker_topic(self, data: dict, key: str, message_id: str):
-        new_record = None
-        json_str = ''
-        if key == KEY_NEW_USER: # при поступлении нового запроса
-            try:
-                new_record = User(
-                    user_id = data['user_id'],
-                    username = data['username'],
-                    full_name = data['full_name'],
-                    created_at = datetime.fromisoformat(data['created_at'])
-                )
-            except Exception as e:
-                logger.error(f"Kafka New User Error: {str(e)}")
-        elif key == KEY_NEW_RESUME:
-            try:
-                new_record = Resume(
-                    resume_id = data['resume_id'],
-                    user_id = data['user_id'],
-                    resume = data['resume']
-                )
-            except Exception as e:
-                logger.error(f"ошибка при получении данных о резюме с kafka: {str(e)}")
-
-            key = f'resume:{data['resume_id']}'
-            json_str = json.dumps({'resume_id': data['resume_id'], 'user_id': data['user_id'], 'resume': data['resume']})
-
-        elif key == KEY_NEW_REQUIREMENTS:
-            try:
-                new_record = Requirements(
-                    requirements_id = data['requirements_id'],
-                    user_id = data['user_id'],
-                    requirements = data['requirements']
-                )
-            except Exception as e:
-                logger.error(f"ошибка при получении данных о требованиях с kafka: {str(e)}")
-
-            key = f'requirements:{data['user_id']}'
-
-            async with RedisWrapper() as redis:
-                data_redis = await redis.get(key)
-
-                if data_redis:  # если данные в redis имеются
-                    data_redis = json.loads(data_redis)
-                    data_redis.append({
-                        'requirements_id': data['requirements_id'],
-                        'user_id': data['user_id'],
-                        'requirements': data['requirements']
-                    })
-                    json_str = json.dumps(data_redis)
-                else: # если данных в redis нет -> ищем в БД
-                    db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
-                    db = await db_gen.__anext__()
-
-                    result = await db.execute(select(Requirements).where(Requirements.user_id == data['user_id']))
-                    db_requirements = result.scalars().all()
-
-                    if db_requirements:
-                        # Подготовка данных для кэша
-                        requirements_data = [req.to_dict() for req in db_requirements] # делаем список из уже имеющихся данных
-                        requirements_data.append(data) # Можем сохранять data т.к. она имеет уже необходимую структуру
-                    else:
-                        requirements_data = [data]
-
-                    json_str = json.dumps(requirements_data)
-
-        elif key == KEY_NEW_PROCESSING:
-            try:
-                new_processing = Processing(
-                    processing_id = data['processing_id'],
-                    resume_id = data['resume_id'],
-                    requirements_id = data['requirements_id'],
-                    user_id = data['user_id'],
-                    create_at = datetime.now(timezone.utc),
-                    score = data['score'],
-                    matches = data['matches'],
-                    recommendation = data['recommendation'],
-                    verdict = data['verdict'],
-                )
-            except Exception as e:
-                logger.error(f"ошибка при получении данных о обработке с kafka: {str(e)}")
+    async def new_record_in_db(self, sql_object):
+        """Вернёт успех выполнения"""
+        try:
             db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
             db = await db_gen.__anext__()
-            db.add(new_processing)
+            db.add(sql_object)
             await db.commit()
+        except Exception as e:
+            logger.error(f"Kafka error: {str(e)}")
 
-            # запрос в БД для получения resume и requirements
-            result = await db.execute(
-                select(Processing)
-                .options(
-                    selectinload(Processing.resume),
-                    selectinload(Processing.requirements)
-                )
-                .where(Processing.processing_id == new_processing.processing_id)
-            )
-            new_processing_full = result.scalar_one()
-
-            # получаем связанные данные (резюме и требования)
-            resume_text = new_processing_full.resume.resume if new_processing_full.resume else None
-            requirements_text = new_processing_full.requirements.requirements if new_processing_full.requirements else None
-
-            # подготовка данных для Redis
-            processing_data = {
-                "processing_id": new_processing.processing_id,
-                "resume_id": new_processing.resume_id,
-                "requirements_id": new_processing.requirements_id,
-                "user_id": new_processing.user_id,
-                "create_at": new_processing.create_at.isoformat(),
-                "score": new_processing.score,
-                "matches": new_processing.matches,
-                "recommendation": new_processing.recommendation,
-                "verdict": new_processing.verdict,
-                "resume": resume_text,
-                "requirements": requirements_text
-            }
-
-            # ключи для redis
-            main_redis_key = f"processing:{data['user_id']}"
-            requirements_key = f"processing_requirements:{data['user_id']}:{data['requirements_id']}"
-
+    async def new_record_in_redis(self, key, json_str):
+        """Вернёт успех выполнения"""
+        try:
             async with RedisWrapper() as redis:
-                try:
-                    # обновляем основной кеш (все обработки пользователя)
-                    main_data = await redis.get(main_redis_key)
-                    if main_data:
-                        main_list = json.loads(main_data)
-                        main_list.append(processing_data)
-                    else:
-                        # если данных нет в Redis, получаем из БД
-                        result = await db.execute(
-                            select(Processing)
-                            .where(Processing.user_id == data['user_id'])
-                        )
-                        db_processings = result.scalars().all()
-                        main_list = [await prepare_processing_data(p) for p in db_processings] # конвертируем в словарь
+                await redis.setex(
+                    key,
+                    STORAGE_TIME_DATA,
+                    json_str
+                )
+        except Exception as e:
+            logger.error(f"Ошибка при записи в redis: {str(e)}")
 
-                    await redis.setex(
-                        main_redis_key,
-                        STORAGE_TIME_DATA,
-                        json.dumps(main_list)
-                    )
-                    # обновляем кеш для конкретного требования
-                    requirements_data = await redis.get(requirements_key)
-                    if requirements_data:
-                        req_list = json.loads(requirements_data)
-                        req_list.append(processing_data)
-                    else:
-                        # если данных нет в Redis, получаем из БД
-                        result = await db.execute(
-                            select(Processing)
-                            .where(Processing.user_id == data['user_id'])
-                            .where(Processing.requirements_id == data['requirements_id'])
-                        )
-                        db_processings = result.scalars().all()
-                        req_list = [await prepare_processing_data(p) for p in db_processings]
+    async def handler_key_new_user(self, data: dict):
+        """Вернёт успех выполнения"""
+        try:
+            new_user = User(
+                user_id=data['user_id'],
+                username=data['username'],
+                full_name=data['full_name'],
+                created_at=datetime.fromisoformat(data['created_at'])
+            )
+            await self.new_record_in_db(new_user)
+            return True
+        except Exception as e:
+            logger.error(f"Kafka New User Error: {str(e)}")
+            return False
 
-                    await redis.setex(
-                        requirements_key,
-                        STORAGE_TIME_DATA,
-                        json.dumps(req_list))
+    async def handler_key_new_resume(self, data: dict):
+        """Вернёт успех выполнения"""
+        try:
+            new_record = Resume(
+                resume_id=data['resume_id'],
+                user_id=data['user_id'],
+                resume=data['resume']
+            )
+            await self.new_record_in_db(new_record)
+        except Exception as e:
+            logger.error(f"ошибка при получении данных о резюме с kafka: {str(e)}")
+            return False
 
-                except Exception as e:
-                    logger.error(f"Redis error: {str(e)}")
-                    return
+        key = f'resume:{data['resume_id']}'
+        json_str = json.dumps({'resume_id': data['resume_id'], 'user_id': data['user_id'], 'resume': data['resume']})
+        await self.new_record_in_redis(key, json_str)
 
-        if new_record: # запись в БД
-            try:
+        return True
+
+    async def handler_key_new_requirements(self, data: dict):
+        """Вернёт успех выполнения"""
+        try:
+            new_record = Requirements(
+                requirements_id=data['requirements_id'],
+                user_id=data['user_id'],
+                requirements=data['requirements']
+            )
+        except Exception as e:
+            logger.error(f"ошибка при получении данных о требованиях с kafka: {str(e)}")
+            return False
+
+        key = f'requirements:{data['user_id']}'
+
+        async with RedisWrapper() as redis:
+            data_redis = await redis.get(key)
+
+            if data_redis:  # если данные в redis имеются
+                data_redis = json.loads(data_redis)
+                data_redis.append({
+                    'requirements_id': data['requirements_id'],
+                    'user_id': data['user_id'],
+                    'requirements': data['requirements']
+                })
+                json_str = json.dumps(data_redis)
+            else:  # если данных в redis нет -> ищем в БД
                 db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
                 db = await db_gen.__anext__()
-                db.add(new_record)
-                await db.commit()
-            except Exception as e:
-                logger.error(f"Kafka error: {str(e)}")
 
-        if key: # кэширование в redis
-            try:
-                async with RedisWrapper() as redis:
-                    await redis.setex(
-                        key,
-                        STORAGE_TIME_DATA,
-                        json_str
-                    )
-            except Exception as e:
-                logger.error(f"Ошибка при записи в redis: {str(e)}")
+                result = await db.execute(select(Requirements).where(Requirements.user_id == data['user_id']))
+                db_requirements = result.scalars().all()
 
-        # записываем что сообщение обработано
+                if db_requirements:
+                    # Подготовка данных для кэша
+                    requirements_data = [req.to_dict() for req in
+                                         db_requirements]  # делаем список из уже имеющихся данных
+                    requirements_data.append(data)  # Можем сохранять data т.к. она имеет уже необходимую структуру
+                else:
+                    requirements_data = [data]
+
+                json_str = json.dumps(requirements_data)
+
+            await self.new_record_in_db(new_record)
+            await self.new_record_in_redis(key, json_str)
+
+            return True
+
+    async def handler_key_new_processing(self, data: dict)-> bool:
+        """Вернёт успех выполнения"""
+        try:
+            new_processing = Processing(
+                processing_id=data['processing_id'],
+                resume_id=data['resume_id'],
+                requirements_id=data['requirements_id'],
+                user_id=data['user_id'],
+                create_at=datetime.now(timezone.utc),
+                score=data['score'],
+                matches=data['matches'],
+                recommendation=data['recommendation'],
+                verdict=data['verdict'],
+            )
+        except Exception as e:
+            logger.error(f"ошибка при получении данных о обработке с kafka: {str(e)}")
+            return False
+
+        db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
+        db = await db_gen.__anext__()
+        db.add(new_processing)
+        await db.commit()
+
+        # запрос в БД для получения resume и requirements
+        result = await db.execute(
+            select(Processing)
+            .options(
+                selectinload(Processing.resume),
+                selectinload(Processing.requirements)
+            )
+            .where(Processing.processing_id == new_processing.processing_id)
+        )
+        new_processing_full = result.scalar_one()
+
+        # получаем связанные данные (резюме и требования)
+        resume_text = new_processing_full.resume.resume if new_processing_full.resume else None
+        requirements_text = new_processing_full.requirements.requirements if new_processing_full.requirements else None
+
+        # подготовка данных для Redis
+        processing_data = {
+            "processing_id": new_processing.processing_id,
+            "resume_id": new_processing.resume_id,
+            "requirements_id": new_processing.requirements_id,
+            "user_id": new_processing.user_id,
+            "create_at": new_processing.create_at.isoformat(),
+            "score": new_processing.score,
+            "matches": new_processing.matches,
+            "recommendation": new_processing.recommendation,
+            "verdict": new_processing.verdict,
+            "resume": resume_text,
+            "requirements": requirements_text
+        }
+
+        # ключи для redis
+        main_redis_key = f"processing:{data['user_id']}"
+        requirements_key = f"processing_requirements:{data['user_id']}:{data['requirements_id']}"
+
         async with RedisWrapper() as redis:
-            await redis.setex(f"processed_message:{message_id}", STORAGE_TIME_DATA, '_')
+            try:
+                # обновляем основной кеш (все обработки пользователя)
+                main_data = await redis.get(main_redis_key)
+                if main_data:
+                    main_list = json.loads(main_data)
+                    main_list.append(processing_data)
+                else:
+                    # если данных нет в Redis, получаем из БД
+                    result = await db.execute(
+                        select(Processing)
+                        .where(Processing.user_id == data['user_id'])
+                    )
+                    db_processings = result.scalars().all()
+                    main_list = [await prepare_processing_data(p) for p in db_processings]  # конвертируем в словарь
+
+                await redis.setex(
+                    main_redis_key,
+                    STORAGE_TIME_DATA,
+                    json.dumps(main_list)
+                )
+                # обновляем кеш для конкретного требования
+                requirements_data = await redis.get(requirements_key)
+                if requirements_data:
+                    req_list = json.loads(requirements_data)
+                    req_list.append(processing_data)
+                else:
+                    # если данных нет в Redis, получаем из БД
+                    result = await db.execute(
+                        select(Processing)
+                        .where(Processing.user_id == data['user_id'])
+                        .where(Processing.requirements_id == data['requirements_id'])
+                    )
+                    db_processings = result.scalars().all()
+                    req_list = [await prepare_processing_data(p) for p in db_processings]
+
+                await redis.setex(
+                    requirements_key,
+                    STORAGE_TIME_DATA,
+                    json.dumps(req_list))
+
+                return True
+            except Exception as e:
+                logger.error(f"Redis error: {str(e)}")
+                return False
+
+    async def worker_topic(self, data: dict, key: str, message_id: str):
+        success = None
+        if key == KEY_NEW_USER: # при поступлении нового запроса
+            success = await self.handler_key_new_user(data)
+        elif key == KEY_NEW_RESUME:
+            success = await self.handler_key_new_resume(data)
+        elif key == KEY_NEW_REQUIREMENTS:
+            success = await self.handler_key_new_requirements(data)
+        elif key == KEY_NEW_PROCESSING:
+            success = await self.handler_key_new_processing(data)
+
+
+        if success:
+            # записываем что сообщение обработано
+            async with RedisWrapper() as redis:
+                await redis.setex(f"processed_message:{message_id}", STORAGE_TIME_DATA, '_')
 
 consumer_notifications = ConsumerKafkaStorageService(KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA)
