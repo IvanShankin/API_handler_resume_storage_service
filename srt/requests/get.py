@@ -22,7 +22,7 @@ router = APIRouter()
 async def chek_rights_redis(key: str, user_id: int, redis: Redis):
     """
     проверяет в redis по ключу, если user_id не совпадает, то вернёт ошибку NoRights
-    :returns Значение redis по данному ключу
+    :return: Значение redis по данному ключу
     """
     data_redis = await redis.get(key)
     if data_redis:
