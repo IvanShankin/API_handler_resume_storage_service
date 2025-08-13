@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone
-from sys import exception
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -73,7 +73,7 @@ class ConsumerKafka:
     def __init__(self, topic: str):
         self.conf = {
             'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-            'group.id': 'foo',
+            'group.id': f'test-group-{time.time()}',  # Уникальный ID
             'auto.offset.reset': 'smallest',
             'enable.auto.commit': False,  # отключаем auto-commit
             'on_commit': self.commit_completed
@@ -115,6 +115,7 @@ class ConsumerKafka:
         msg_count = 0
 
         while self.running:
+            print("читает")
             msg = self.consumer.poll(timeout=1.0)
             if msg is None:
                 continue
@@ -127,6 +128,7 @@ class ConsumerKafka:
             else:
                 # проверка на обработанное сообщение
                 message_id = await self._get_message_uid(msg)
+                print(f"\nполучили сообщение с id = {message_id}\n")
                 async with RedisWrapper() as redis:
                     if await redis.get(f"processed_message:{message_id}"):
                         continue

@@ -174,7 +174,7 @@ async def clearing_kafka():
     for topic in TOPIC_LIST:
         admin_client.create_topics([NewTopic(topic=topic, num_partitions=1, replication_factor=1)])
 
-    time.sleep(2)
+    time.sleep(5)
 
     # Ждём инициализации partition и leader
     for _ in range(max_retries):
@@ -201,9 +201,11 @@ async def create_user(db_session)->dict:
     Создаёт юзера в БД
     :return: dict {"user_id": int, "access_token": str, "username": str, "full_name": str, "created_at": datetime(UTC)}
     """
+    await db_session.execute(delete(User))
+    await db_session.commit()
+
     max_id_result = await db_session.execute(select(func.max(User.user_id)))
-    max_id = max_id_result.scalar() or 0  # Если записей нет, начнём с 0
-    next_id = max_id + 1  # Следующий доступный ID
+    next_id = (max_id_result.scalar() or 0) + 1
 
     new_user = User(
         user_id=next_id,

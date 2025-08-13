@@ -36,6 +36,7 @@ async def test_handler_key_new_user(clearing_kafka, db_session):
 
 @pytest.mark.asyncio
 async def test_handler_key_new_resume(clearing_kafka, db_session, create_user):
+    print("вошли в функцию")
     data_for_kafka = {
         'resume_id': 1,
         'user_id': create_user['user_id'],
@@ -217,7 +218,7 @@ class TestDeletions:
             KEY_DELETE_REQUIREMENTS,
             data_for_kafka
         )
-        await asyncio.sleep(2)  # время на обработку
+        await asyncio.sleep(40)  # время на обработку
 
         result_db = await db_session.execute(select(Processing).where(Processing.processing_id == processing['processing_id']))
         processing_result = result_db.scalar_one_or_none()
