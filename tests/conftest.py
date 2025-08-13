@@ -43,6 +43,22 @@ DICT_FOR_PROCESSING = {'processing_id', 'resume_id', 'requirements_id', 'user_id
 DICT_FOR_PROCESSING_DETAIL = {'processing_id', 'resume_id', 'requirements_id', 'user_id', 'create_at', 'score',
                               'verdict', 'matches', 'recommendation', 'resume', 'requirements'}
 
+async def wait_for(condition_fn, timeout: int = 20, interval: float = 1)-> bool:
+    """
+    Проверяет результат переданной функции, если он есть, то функция вернёт True.
+     Если не успеет за отведённое время, то вызовется ошибка
+    :param condition_fn: функция для проверки
+    :param timeout: отведенное время в секундах за которое необходимо получить данные с 'condition_fn'
+    :param interval: частота вызова функции
+    :return:
+    """
+    start = asyncio.get_event_loop().time()
+    while asyncio.get_event_loop().time() - start < timeout:
+        if await condition_fn():
+            return True
+        await asyncio.sleep(interval)
+    raise TimeoutError("Условие не выполнилось за отведённое время")
+
 def create_random_processing(processing_id:int = 1, resume_id:int = 1, requirements_id: int = 1, user_id: int = 1)->dict:
     """Создаёт обработку со случайными данными в следующих ключах: create_at и score
     :return: "processing_id": int,

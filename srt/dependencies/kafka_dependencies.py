@@ -115,7 +115,6 @@ class ConsumerKafka:
         msg_count = 0
 
         while self.running:
-            print("читает")
             msg = self.consumer.poll(timeout=1.0)
             if msg is None:
                 continue
@@ -128,7 +127,6 @@ class ConsumerKafka:
             else:
                 # проверка на обработанное сообщение
                 message_id = await self._get_message_uid(msg)
-                print(f"\nполучили сообщение с id = {message_id}\n")
                 async with RedisWrapper() as redis:
                     if await redis.get(f"processed_message:{message_id}"):
                         continue
@@ -370,7 +368,6 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             # условие на user_id проходить не надо, это должно произойти в другом микросервисе
             await db.execute(delete(Processing).where(Processing.processing_id.in_(data['processing_ids'])))
             await db.commit()
-            print('удалили 1')
         except Exception as e:
             logger.error(f"Ошибка при удалении processing: '{str(e)}'")
             await db.rollback()
@@ -412,12 +409,10 @@ class ConsumerKafkaStorageService(ConsumerKafka):
         return True
 
     async def handler_key_delete_requirements(self, data: dict) -> bool:
-        print("точка 1")
         # удаление связанных processing
         success = await self.handler_key_delete_processing(data)
         if not success:
             return False
-        print("точка 2")
 
         db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
         db = await db_gen.__anext__()
@@ -425,7 +420,6 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             # удаляем сами requirements
             await db.execute(delete(Requirements).where(Requirements.requirements_id.in_(data['requirements_ids'])))
             await db.commit()
-            print('удалили 2')
         except Exception as e:
             logger.error(f"Ошибка при удалении requirements: '{str(e)}'")
             await db.rollback()
@@ -454,7 +448,6 @@ class ConsumerKafkaStorageService(ConsumerKafka):
 
     async def worker_topic(self, data: dict, key: str, message_id: str):
         success = None
-        print(f"получили сообщение: \n{data}, \n{key}")
         if key == KEY_NEW_USER: # при поступлении нового запроса
             success = await self.handler_key_new_user(data)
         elif key == KEY_NEW_RESUME:

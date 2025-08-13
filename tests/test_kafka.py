@@ -8,7 +8,43 @@ from srt.config import KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, KEY_N
     KEY_DELETE_REQUIREMENTS
 from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import RedisWrapper
-from tests.conftest import KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA, producer, create_processing
+from tests.conftest import KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA, producer, create_processing, wait_for
+
+async def check_user_in_db(db_session, user_id)-> bool:
+    """Вернёт результат проверки на не наличие в БД User по его 'user_id'"""
+    result = await db_session.execute(select(User).where(User.user_id == user_id))
+    return result.scalar_one_or_none() is not None
+
+async def check_resume_in_db_and_redis(db_session, resume_id: int)-> bool:
+    """Вернёт результат проверки на не наличие в БД Resume по его 'resume_id'"""
+    result = await db_session.execute(
+        select(Resume).where(Resume.resume_id == resume_id)
+    )
+    return result.scalar_one_or_none()
+
+async def check_requirements_in_db(db_session, requirements_id: int)-> bool:
+    """Вернёт результат проверки на не наличие в БД Requirements по его 'requirements_id'"""
+    result = await db_session.execute(
+        select(Requirements).where(Requirements.requirements_id == requirements_id)
+    )
+    return result.scalar_one_or_none()
+
+async def check_processing_in_db(db_session, processing_id: int) -> bool:
+    """Вернёт результат проверки на наличие в БД Processing по его 'processing_id'"""
+    result = await db_session.execute(
+        select(Processing).where(Processing.processing_id == processing_id)
+    )
+    return result.scalar_one_or_none()
+
+async def check_delete_processing_in_db(db_session, processing_id: int) -> bool:
+    """Вернёт результат проверки на не наличие в БД Processing по его 'processing_id'"""
+    result = await db_session.execute(
+        select(Processing).where(Processing.processing_id == processing_id)
+    )
+    if not result.scalar_one_or_none():
+        return True
+    else:
+        return False
 
 
 @pytest.mark.asyncio
@@ -24,7 +60,9 @@ async def test_handler_key_new_user(clearing_kafka, db_session):
         KEY_NEW_USER,
         data_for_kafka
     )
-    await asyncio.sleep(40) # время на обработку
+
+    # ожидание обработки
+    await wait_for(lambda: check_user_in_db(db_session, data_for_kafka['user_id']), timeout=30)
 
     request_db = await db_session.execute(select(User).where(User.user_id == data_for_kafka['user_id']))
     data_db = request_db.scalar_one_or_none()
@@ -47,7 +85,9 @@ async def test_handler_key_new_resume(clearing_kafka, db_session, create_user):
         KEY_NEW_RESUME,
         data_for_kafka
     )
-    await asyncio.sleep(40) # время на обработку
+
+    # ожидание обработки
+    await wait_for(lambda: check_resume_in_db_and_redis(db_session, data_for_kafka['resume_id']), timeout=30)
 
     request_db = await db_session.execute(select(Resume).where(Resume.resume_id == data_for_kafka['resume_id']))
     data_db = request_db.scalar_one_or_none()
@@ -74,7 +114,9 @@ async def test_handler_key_new_requirements(clearing_kafka, db_session, create_u
         KEY_NEW_REQUIREMENTS,
         data_for_kafka
     )
-    await asyncio.sleep(40)  # время на обработку
+
+    # ожидание обработки
+    await wait_for(lambda: check_requirements_in_db(db_session, data_for_kafka['requirements_id']), timeout=30)
 
     request_db = await db_session.execute(select(Requirements).where(Requirements.requirements_id == data_for_kafka['requirements_id']))
     data_db = request_db.scalar_one_or_none()
@@ -109,7 +151,9 @@ async def test_handler_key_new_processing(clearing_kafka, db_session, create_res
         KEY_NEW_PROCESSING,
         data_for_kafka
     )
-    await asyncio.sleep(40)  # время на обработку
+
+    # ожидание обработки
+    await wait_for(lambda: check_processing_in_db(db_session, data_for_kafka['processing_id']), timeout=30)
 
     request_db = await db_session.execute(select(Processing).where(Processing.processing_id == data_for_kafka['processing_id']))
     data_db = request_db.scalar_one_or_none()
@@ -177,7 +221,9 @@ class TestDeletions:
             KEY_DELETE_PROCESSING,
             data_for_kafka
         )
-        await asyncio.sleep(40)  # время на обработку
+
+        # ожидание обработки
+        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=30)
 
         result_db = await db_session.execute(select(Processing).where(Processing.processing_id == processing['processing_id']))
         processing_result = result_db.scalar_one_or_none()
@@ -218,7 +264,9 @@ class TestDeletions:
             KEY_DELETE_REQUIREMENTS,
             data_for_kafka
         )
-        await asyncio.sleep(40)  # время на обработку
+
+        # ожидание обработки
+        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=30)
 
         result_db = await db_session.execute(select(Processing).where(Processing.processing_id == processing['processing_id']))
         processing_result = result_db.scalar_one_or_none()
