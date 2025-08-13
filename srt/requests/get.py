@@ -1,9 +1,7 @@
 import json
-import os
 
-from typing import List, Annotated, Optional, Union
-from enum import Enum
-from fastapi import Path, Query, APIRouter, Depends, HTTPException, Form, Request
+from typing import List,  Optional, Union
+from fastapi import  Query, APIRouter, Depends, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +14,7 @@ from srt.dependencies.redis_dependencies import Redis, get_redis
 from srt.exception import NoRights, NotFoundData, InvalidParameters
 from srt.schemas.request import ProcessingAndRequirementsID, SortField, SortOrder
 from srt.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
+from srt.utils import prepare_processing_data
 
 router = APIRouter()
 
@@ -44,23 +43,6 @@ async def validate_processing_data(
         processing_id = processing_id,
         requirements_id = requirements_id,
     )
-
-# вспомогательные функции для search_processing
-async def prepare_processing_data(p: Processing) -> dict:
-    """Подготавливает данные для кеширования"""
-    return {
-        "processing_id": p.processing_id,
-        "resume_id": p.resume_id,
-        "requirements_id": p.requirements_id,
-        "user_id": p.user_id,
-        "create_at": p.create_at.strftime("%Y-%m-%d %H:%M:%S%z"),
-        "score": p.score,
-        "matches": p.matches,
-        "recommendation": p.recommendation,
-        "verdict": p.verdict,
-        "resume": p.resume.resume if p.resume else None,
-        "requirements": p.requirements.requirements if p.requirements else None
-    }
 
 def _convert_to_output_model(data: str, in_detail: bool)->Union[List[ProcessingOut], List[ProcessingDetailOut]]:
     """

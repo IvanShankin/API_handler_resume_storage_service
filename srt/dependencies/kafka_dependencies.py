@@ -19,7 +19,7 @@ from srt.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RES
 from srt.database.database import get_db
 from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import RedisWrapper
-from srt.requests.get import prepare_processing_data
+from srt.utils import prepare_processing_data
 
 load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS')
