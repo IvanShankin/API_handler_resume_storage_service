@@ -29,13 +29,8 @@ session_local = sessionmaker(
 )
 
 async def get_db() -> AsyncSession:
-    print("используеться оригинальный get_db")
     async with session_local() as db:  # Автоматическое закрытие сессии
         yield db
-
-# При завершении приложения:
-async def shutdown():
-    await engine.dispose()
 
 
 async def create_database():

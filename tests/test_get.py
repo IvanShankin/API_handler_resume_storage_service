@@ -296,9 +296,6 @@ class TestGetProcessing:
 
             data_response = response.json()
 
-            print(data_response)
-            print(processing_list)
-
             # Проверяем данные из API
             for api_item in data_response:
                 # Находим соответствующий исходный объект

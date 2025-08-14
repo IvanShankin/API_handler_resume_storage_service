@@ -32,5 +32,5 @@ class ProcessingOut(BaseModel):
 class ProcessingDetailOut(ProcessingOut):
     resume: str
     requirements: str
-    matches: List[str] # это убрать
-    recommendation: str # это убрать
+    matches: List[str]
+    recommendation: str

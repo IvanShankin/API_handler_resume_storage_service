@@ -114,7 +114,6 @@ class ConsumerKafka:
         msg_count = 0
 
         while self.running:
-            print("kafka читает")
             msg = self.consumer.poll(timeout=1.0)
             if msg is None:
                 continue
@@ -438,7 +437,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                         if requirements['requirements_id'] not in data['requirements_ids']: # если не надо удалять
                             new_list_requirements.append(requirements)
 
-                    await redis.setex(redis_key, STORAGE_TIME_DATA, new_list_requirements)
+                    await redis.setex(redis_key, STORAGE_TIME_DATA, json.dumps(new_list_requirements))
 
             except Exception as e:
                 logger.error(f'Ошибка в работе redis, при попытке удаления requirements: {str(e)}')
