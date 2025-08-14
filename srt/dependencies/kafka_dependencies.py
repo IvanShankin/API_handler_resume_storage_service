@@ -28,7 +28,6 @@ KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_CONSUMER_FOR_UP
 admin_client = AdminClient({'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS})\
 
 producer = None # ниже будет переопределён
-consumer_auth = None # ниже будет переопределён
 
 
 def create_topic(topic_name, num_partitions=1, replication_factor=1):
@@ -115,6 +114,7 @@ class ConsumerKafka:
         msg_count = 0
 
         while self.running:
+            print("kafka читает")
             msg = self.consumer.poll(timeout=1.0)
             if msg is None:
                 continue
@@ -425,7 +425,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             await db.rollback()
             return False
 
-        async with RedisWrapper as redis:
+        async with RedisWrapper() as redis:
             try:
                 redis_key = f'requirements:{data['user_id']}'
                 list_requirements = await redis.get(redis_key)
@@ -466,4 +466,4 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             async with RedisWrapper() as redis:
                 await redis.setex(f"processed_message:{message_id}", STORAGE_TIME_DATA, '_')
 
-consumer_notifications = ConsumerKafkaStorageService(KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA)
+consumer = ConsumerKafkaStorageService(KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA)

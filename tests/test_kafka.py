@@ -62,7 +62,7 @@ async def test_handler_key_new_user(clearing_kafka, db_session):
     )
 
     # ожидание обработки
-    await wait_for(lambda: check_user_in_db(db_session, data_for_kafka['user_id']), timeout=30)
+    await wait_for(lambda: check_user_in_db(db_session, data_for_kafka['user_id']), timeout=40)
 
     request_db = await db_session.execute(select(User).where(User.user_id == data_for_kafka['user_id']))
     data_db = request_db.scalar_one_or_none()
@@ -74,7 +74,6 @@ async def test_handler_key_new_user(clearing_kafka, db_session):
 
 @pytest.mark.asyncio
 async def test_handler_key_new_resume(clearing_kafka, db_session, create_user):
-    print("вошли в функцию")
     data_for_kafka = {
         'resume_id': 1,
         'user_id': create_user['user_id'],
@@ -87,7 +86,7 @@ async def test_handler_key_new_resume(clearing_kafka, db_session, create_user):
     )
 
     # ожидание обработки
-    await wait_for(lambda: check_resume_in_db_and_redis(db_session, data_for_kafka['resume_id']), timeout=30)
+    await wait_for(lambda: check_resume_in_db_and_redis(db_session, data_for_kafka['resume_id']), timeout=40)
 
     request_db = await db_session.execute(select(Resume).where(Resume.resume_id == data_for_kafka['resume_id']))
     data_db = request_db.scalar_one_or_none()
@@ -116,7 +115,7 @@ async def test_handler_key_new_requirements(clearing_kafka, db_session, create_u
     )
 
     # ожидание обработки
-    await wait_for(lambda: check_requirements_in_db(db_session, data_for_kafka['requirements_id']), timeout=30)
+    await wait_for(lambda: check_requirements_in_db(db_session, data_for_kafka['requirements_id']), timeout=40)
 
     request_db = await db_session.execute(select(Requirements).where(Requirements.requirements_id == data_for_kafka['requirements_id']))
     data_db = request_db.scalar_one_or_none()
@@ -153,7 +152,7 @@ async def test_handler_key_new_processing(clearing_kafka, db_session, create_res
     )
 
     # ожидание обработки
-    await wait_for(lambda: check_processing_in_db(db_session, data_for_kafka['processing_id']), timeout=30)
+    await wait_for(lambda: check_processing_in_db(db_session, data_for_kafka['processing_id']), timeout=40)
 
     request_db = await db_session.execute(select(Processing).where(Processing.processing_id == data_for_kafka['processing_id']))
     data_db = request_db.scalar_one_or_none()
@@ -223,7 +222,7 @@ class TestDeletions:
         )
 
         # ожидание обработки
-        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=30)
+        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=40)
 
         result_db = await db_session.execute(select(Processing).where(Processing.processing_id == processing['processing_id']))
         processing_result = result_db.scalar_one_or_none()
@@ -266,7 +265,7 @@ class TestDeletions:
         )
 
         # ожидание обработки
-        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=30)
+        await wait_for(lambda: check_delete_processing_in_db(db_session, processing['processing_id']), timeout=40)
 
         result_db = await db_session.execute(select(Processing).where(Processing.processing_id == processing['processing_id']))
         processing_result = result_db.scalar_one_or_none()

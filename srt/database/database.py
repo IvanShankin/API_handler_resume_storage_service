@@ -20,21 +20,22 @@ SQL_DB_URL = f'postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
 
 engine_for_create = create_async_engine(SQL_DB_URL)
 
+engine = create_async_engine(SQL_DB_URL)
+session_local = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
+
 async def get_db() -> AsyncSession:
-    engine = create_async_engine(SQL_DB_URL)
-
-    session_local = sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False
-    )
-
-    db = session_local()
-    try:
+    print("используеться оригинальный get_db")
+    async with session_local() as db:  # Автоматическое закрытие сессии
         yield db
-    finally:
-        await db.close()
+
+# При завершении приложения:
+async def shutdown():
+    await engine.dispose()
 
 
 async def create_database():

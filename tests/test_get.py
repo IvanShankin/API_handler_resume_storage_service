@@ -1,15 +1,9 @@
-import asyncio
 import json
-from calendar import day_abbr
-from datetime import datetime, UTC
+from datetime import datetime
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.testing.plugin.plugin_base import requirements
 from httpx import AsyncClient, ASGITransport
 
-from srt.config import STORAGE_TIME_DATA
-from srt.database.models import User, Resume, Requirements, Processing
 from srt.dependencies.redis_dependencies import RedisWrapper
 from srt.main import app
 from tests.conftest import DICT_FOR_PROCESSING, DICT_FOR_PROCESSING_DETAIL, create_processing
