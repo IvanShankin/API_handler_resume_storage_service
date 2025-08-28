@@ -14,12 +14,12 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from srt.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, \
+from src.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, \
     KEY_NEW_PROCESSING, STORAGE_TIME_DATA, KEY_DELETE_PROCESSING, KEY_DELETE_REQUIREMENTS
-from srt.database.database import get_db
-from srt.database.models import User, Resume, Requirements, Processing
-from srt.dependencies.redis_dependencies import RedisWrapper
-from srt.utils import prepare_processing_data
+from src.database.database import get_db
+from src.database.models import User, Resume, Requirements, Processing
+from src.dependencies.redis_dependencies import RedisWrapper
+from src.utils import prepare_processing_data
 
 load_dotenv()
 KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS')

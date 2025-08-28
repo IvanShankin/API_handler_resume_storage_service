@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from dotenv import load_dotenv
 
-from srt.database.base import Base
+from src.database.base import Base
 
 load_dotenv()  # Загружает переменные из .env
 DB_HOST = os.getenv('DB_HOST')

@@ -28,11 +28,11 @@ MODE=os.getenv('MODE')
 # этот импорт необходимо указывать именно тут для корректной загрузки переменных из .tests.env
 import pytest_asyncio
 
-from srt.config import logger
-from srt.database.models import User, Resume, Requirements, Processing
-from srt.database.database import create_database, get_db as original_get_db, SQL_DB_URL
-from srt.dependencies.kafka_dependencies import admin_client, ConsumerKafkaStorageService
-from srt.dependencies.redis_dependencies import RedisWrapper
+from src.config import logger
+from src.database.models import User, Resume, Requirements, Processing
+from src.database.database import create_database, get_db as original_get_db, SQL_DB_URL
+from src.dependencies.kafka_dependencies import admin_client, ConsumerKafkaStorageService
+from src.dependencies.redis_dependencies import RedisWrapper
 
 
 TOPIC_LIST = [
@@ -154,7 +154,7 @@ def override_get_db_globally():
         if not module:
             continue
         # фильтруем только свои модули
-        if not module_name.startswith("srt."):
+        if not module_name.startswith("src."):
             continue
         try:
             for attr_name, attr_value in inspect.getmembers(module):
@@ -167,7 +167,7 @@ def override_get_db_globally():
 
     # подмена в FastAPI dependency_overrides
     try:
-        from srt.main import app
+        from src.main import app
         app.dependency_overrides[original_get_db] = _mock_get_db
     except ImportError:
         pass
@@ -178,7 +178,7 @@ def override_get_db_globally():
         setattr(module, attr_name, original)
 
     try:
-        from srt.main import app
+        from src.main import app
         app.dependency_overrides.clear()
     except ImportError:
         pass
@@ -186,7 +186,7 @@ def override_get_db_globally():
 @pytest_asyncio.fixture
 async def db_session() -> AsyncSession:
     """Соединение с БД"""
-    from srt.database.database import get_db  # Импортируем после переопределения
+    from src.database.database import get_db  # Импортируем после переопределения
 
     db_gen = get_db()
     session = await db_gen.__anext__()

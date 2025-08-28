@@ -4,8 +4,8 @@ from datetime import datetime
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from srt.dependencies.redis_dependencies import RedisWrapper
-from srt.main import app
+from src.dependencies.redis_dependencies import RedisWrapper
+from src.main import app
 from tests.conftest import DICT_FOR_PROCESSING, DICT_FOR_PROCESSING_DETAIL, create_processing
 
 

@@ -1,5 +1,5 @@
 # вспомогательные функции для search_processing
-from srt.database.models import Processing
+from src.database.models import Processing
 
 
 async def prepare_processing_data(p: Processing) -> dict:

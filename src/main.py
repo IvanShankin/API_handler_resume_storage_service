@@ -6,10 +6,10 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from srt.database.database import create_database
-from srt.requests import main_router
-from srt.dependencies import check_exists_topic
-from srt.dependencies.kafka_dependencies import consumer
+from src.database.database import create_database
+from src.requests import main_router
+from src.dependencies import check_exists_topic
+from src.dependencies.kafka_dependencies import consumer
 
 load_dotenv()
 KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA')

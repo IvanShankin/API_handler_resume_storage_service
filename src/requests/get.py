@@ -6,15 +6,15 @@ from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from srt.access import get_current_user
-from srt.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
-from srt.database.database import get_db
-from srt.database.models import User, Resume, Requirements, Processing
-from srt.dependencies.redis_dependencies import Redis, get_redis
-from srt.exception import NoRights, NotFoundData, InvalidParameters
-from srt.schemas.request import ProcessingAndRequirementsID, SortField, SortOrder
-from srt.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
-from srt.utils import prepare_processing_data
+from src.access import get_current_user
+from src.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
+from src.database.database import get_db
+from src.database.models import User, Resume, Requirements, Processing
+from src.dependencies.redis_dependencies import Redis, get_redis
+from src.exception import NoRights, NotFoundData, InvalidParameters
+from src.schemas.request import ProcessingAndRequirementsID, SortField, SortOrder
+from src.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
+from src.utils import prepare_processing_data
 
 router = APIRouter()
 

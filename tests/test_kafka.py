@@ -4,10 +4,10 @@ import json
 import pytest
 from sqlalchemy import select
 
-from srt.config import KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, KEY_NEW_PROCESSING, KEY_DELETE_PROCESSING, \
+from src.config import KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, KEY_NEW_PROCESSING, KEY_DELETE_PROCESSING, \
     KEY_DELETE_REQUIREMENTS
-from srt.database.models import User, Resume, Requirements, Processing
-from srt.dependencies.redis_dependencies import RedisWrapper
+from src.database.models import User, Resume, Requirements, Processing
+from src.dependencies.redis_dependencies import RedisWrapper
 from tests.conftest import KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA, producer, create_processing, wait_for
 
 async def check_user_in_db(db_session, user_id)-> bool:
