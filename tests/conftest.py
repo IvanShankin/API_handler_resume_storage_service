@@ -119,11 +119,12 @@ conf = {
 producer = ProducerKafka()
 
 @pytest_asyncio.fixture(scope="function")
-async def engine():
+async def create_database_fixture():
     if MODE != "TEST":
         raise Exception("Используется основная БД!")
 
     await create_database()
+    yield
 
 
 # Мок-версия get_db
@@ -195,7 +196,7 @@ async def db_session() -> AsyncSession:
         await session.close()
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
-async def clearing_db(db_session: AsyncSession):
+async def clearing_db(db_session: AsyncSession, create_database_fixture):
     """Очищает базу банных"""
     await db_session.execute(delete(Processing))
     await db_session.execute(delete(Requirements))
