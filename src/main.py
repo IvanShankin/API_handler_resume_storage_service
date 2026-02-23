@@ -14,7 +14,9 @@ from src.dependencies.kafka_dependencies import consumer
 load_dotenv()
 KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA = os.getenv('KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA')
 
-app = FastAPI()
+app = FastAPI(
+    title="Storage Service"
+)
 
 app.include_router(main_router)
 
@@ -33,6 +35,6 @@ if __name__ == '__main__':
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8005,
+        port=8000,
         reload=True
     )

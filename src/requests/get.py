@@ -5,6 +5,7 @@ from fastapi import  Query, APIRouter, Depends, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from twisted.python.log import logerr
 
 from src.access import get_current_user
 from src.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
@@ -16,7 +17,7 @@ from src.schemas.request import ProcessingAndRequirementsID, SortField, SortOrde
 from src.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
 from src.utils import prepare_processing_data
 
-router = APIRouter()
+router = APIRouter(prefix="/storage")
 
 async def chek_rights_redis(key: str, user_id: int, redis: Redis):
     """
@@ -34,7 +35,7 @@ async def chek_rights_redis(key: str, user_id: int, redis: Redis):
 async def validate_processing_data(
     processing_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID обработки."),
     requirements_id: Optional[int] = Query(None, ge=1, description="Фильтр по ID требования.")
-)->ProcessingAndRequirementsID:
+) -> ProcessingAndRequirementsID:
     """Проверяет данные направленные для получения обработки. Вызовет ошибку если будут переданы сразу два параметра"""
     if processing_id and requirements_id:
         raise InvalidParameters(['processing_id', 'requirements_id'])
@@ -44,7 +45,7 @@ async def validate_processing_data(
         requirements_id = requirements_id,
     )
 
-def _convert_to_output_model(data: str, in_detail: bool)->Union[List[ProcessingOut], List[ProcessingDetailOut]]:
+def _convert_to_output_model(data: str, in_detail: bool) -> Union[List[ProcessingOut], List[ProcessingDetailOut]]:
     """
     Конвертирует в выходную модель. Если необходима полная информация, то преобразует в ProcessingDetailOut, иначе в ProcessingOut
     :param data: json строка в формате list[dict]
@@ -57,14 +58,31 @@ def _convert_to_output_model(data: str, in_detail: bool)->Union[List[ProcessingO
     # создаём новый словарь, устанавливая некоторые данные на None (**item - распаковывает словарь)
     return [ProcessingOut.model_validate({**item, "resume": None, "requirements": None}) for item in data]
 
+
+async def get_processing_by_resume(resume_id: int, user_id: int, db: AsyncSession) -> ProcessingDetailOut | None:
+    result_db = await db.execute(
+        select(Processing)
+        .where((Processing.user_id == user_id) & (Processing.resume_id == resume_id))
+        .options(selectinload(Processing.resume), selectinload(Processing.requirements))
+    )
+    processing: List[Processing] = result_db.scalars().all()
+
+    if processing:
+        processing_detail_dict = await prepare_processing_data(processing[0])
+    else:
+        return None
+
+    return ProcessingDetailOut.model_validate(processing_detail_dict)
+
+
 async def search_processing(
-        processing_id: Optional[int],
-        requirements_id: Optional[int],
-        user_id: int,
-        in_detail: bool,
-        redis: Redis,
-        db: AsyncSession
-    )->Union[List[ProcessingOut], List[ProcessingDetailOut]]:
+    processing_id: Optional[int],
+    requirements_id: Optional[int],
+    user_id: int,
+    in_detail: bool,
+    redis: Redis,
+    db: AsyncSession
+) -> Union[List[ProcessingOut], List[ProcessingDetailOut]]:
     """
     Ищет данные об обработке в redis, если там не найдено, то ищет в БД. Кэширует данные в redis.
     :return: Ввернёт List[ProcessingDetailOut], если установлен флаг in_detail, иначе List[ProcessingOut]
@@ -219,10 +237,10 @@ async def get_me(
 
 @router.get("/get_resume", response_model=ResumeOut)
 async def get_resume(
-        resume_id: int,
-        current_user: User = Depends(get_current_user),
-        redis: Redis = Depends(get_redis),
-        db: AsyncSession = Depends(get_db)
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db)
 ):
     redis_data = await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis)
     if redis_data:
@@ -243,15 +261,48 @@ async def get_resume(
     else:
         raise NotFoundData()
 
+
+@router.get("/get_resume_by_requirement", response_model=List[ResumeOut])
+async def get_resume(
+    requirement_id: int,
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db)
+):
+    data_redis = await redis.get(f'resume_by_requirement:{requirement_id}')
+    if data_redis:
+        data_redis = json.loads(data_redis)
+        await redis.setex(f'resume_by_requirement:{requirement_id}', STORAGE_TIME_DATA, json.dumps(data_redis))
+
+        if data_redis:
+            logger.info("/get_resume_by_requirement - Нашли данные в redis")
+            return [ResumeOut.model_validate(resume) for resume in data_redis]
+
+    db_data = await db.execute(select(Resume).where(Resume.requirement_id == requirement_id))
+    db_resumes: List[Resume] = db_data.scalars().all()
+
+    if db_resumes:  # если данные с БД есть
+        await redis.setex(
+            f'resume_by_requirement:{requirement_id}',
+            STORAGE_TIME_DATA,
+            json.dumps([resume.to_dict() for resume in db_resumes]))
+
+        logger.info("/get_resume_by_requirement - Записали данные в redis")
+
+        return [ResumeOut.model_validate(resume.to_dict()) for resume in db_resumes]
+    else:
+        raise NotFoundData()
+
+
 @router.get("/get_requirements", response_model=List[RequirementsOut])
 async def get_requirements(
-        requirements_id: Optional[int] = Query(None, ge=1, description="Указание конкретного требования (Опционально)"),
-        current_user: User = Depends(get_current_user),
-        redis: Redis = Depends(get_redis),
-        db: AsyncSession = Depends(get_db)
+    requirements_id: Optional[int] = Query(None, ge=1, description="Указание конкретного требования (Опционально)"),
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db)
 ):
     """Если не указать requirements_id, то вернутся все требования данного пользователя"""
-    redis_key = f'requirements:{current_user.user_id}'
+    redis_key = f'requirements_by_user:{current_user.user_id}'
 
     try:
         redis_data = await chek_rights_redis(redis_key, current_user.user_id, redis)
@@ -293,12 +344,12 @@ async def get_requirements(
 
 @router.get('/get_processing', response_model=List[ProcessingOut])
 async def get_processing(
-        param: ProcessingAndRequirementsID = Depends(validate_processing_data),
-        sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
-        order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
-        current_user: User = Depends(get_current_user),
-        redis: Redis = Depends(get_redis),
-        db: AsyncSession = Depends(get_db)
+    param: ProcessingAndRequirementsID = Depends(validate_processing_data),
+    sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
+    order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     processing_id и requirements_id нельзя отправлять в одном запросе!
@@ -308,14 +359,28 @@ async def get_processing(
 
     return await sorted_list_processing(processing, sort_by, order)
 
+
+@router.get('/get_processing_detail_by_resume', response_model=ProcessingDetailOut)
+async def get_processing_detail_by_resume(
+    resume_id: int = Query(..., ge=1, description="Фильтр по ID Резюме."),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await get_processing_by_resume(resume_id, current_user.user_id, db)
+    if not result:
+        raise NotFoundData()
+
+    return result
+
+
 @router.get('/get_processing_detail', response_model=List[ProcessingDetailOut])
 async def get_processing_detail(
-        param: ProcessingAndRequirementsID = Depends(validate_processing_data),
-        sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
-        order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
-        current_user: User = Depends(get_current_user),
-        redis: Redis = Depends(get_redis),
-        db: AsyncSession = Depends(get_db)
+    param: ProcessingAndRequirementsID = Depends(validate_processing_data),
+    sort_by: SortField = Query(SortField.CREATE_AT, description="Поле для сортировки"),
+    order: SortOrder = Query(SortOrder.DESC, description="Порядок сортировки"),
+    current_user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     processing_id и requirements_id нельзя отправлять в одном запросе!

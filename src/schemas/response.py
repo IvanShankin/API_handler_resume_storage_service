@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class UserOut(BaseModel):
@@ -25,12 +25,18 @@ class ProcessingOut(BaseModel):
     resume_id: int
     requirements_id: int
     user_id: int
+
+    success: bool = False
+    message_error: str | None = None
+    wait_seconds: str | None = None
+
     create_at: datetime
-    score: int
-    verdict: str
+    score: int | None = None
+    verdict: str | None = None
+
 
 class ProcessingDetailOut(ProcessingOut):
     resume: str
     requirements: str
-    matches: List[str]
-    recommendation: str
+    matches: List[str] | None = None
+    recommendation: str | None = None

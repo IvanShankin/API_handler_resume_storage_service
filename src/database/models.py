@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY, inspect
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY, inspect, Boolean, func
 from sqlalchemy.orm import relationship
 
 from src.database.base import Base
@@ -19,9 +19,11 @@ class Resume(Base):
     __tablename__ = "resume"
     resume_id = Column(Integer, primary_key=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    requirement_id = Column(Integer, ForeignKey('requirements.requirements_id'), nullable=False)
     resume = Column(String(MAX_CHAR_RESUME), nullable=False)
 
     user = relationship("User", back_populates="resume")
+    requirement = relationship("Requirements", back_populates="resume")
     processing = relationship("Processing", back_populates="resume")
 
 class Requirements(Base):
@@ -31,6 +33,7 @@ class Requirements(Base):
     requirements = Column(String(MAX_CHAR_REQUIREMENTS), nullable=False)
 
     user = relationship("User", back_populates="requirements")
+    resume = relationship("Resume", back_populates="requirement")
     processing = relationship("Processing", back_populates="requirements")
 
     def to_dict(self):
@@ -43,11 +46,17 @@ class Processing(Base):
     resume_id = Column(Integer, ForeignKey('resume.resume_id'), nullable=False)
     requirements_id = Column(Integer, ForeignKey('requirements.requirements_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    create_at = Column(DateTime(timezone=True), nullable=False)
-    score = Column(Integer, nullable=False)
-    matches = Column(ARRAY(String), nullable=False)  # перечисление навыков которые совпадают требованию
-    recommendation = Column(String(700), nullable=False)  # рекомендации по найму
-    verdict = Column(String(50), nullable=False)  # заключение "Подходит" или "Не подходит"
+
+    success = Column(Boolean, nullable=False)
+    message_error = Column(String, nullable=True) # только при success == False
+    wait_seconds = Column(Integer, nullable=True) # только при success == False
+
+    score = Column(Integer, nullable=True)
+    matches = Column(ARRAY(String), nullable=True)  # перечисление навыков которые совпадают требованию
+    recommendation = Column(String(700), nullable=True)  # рекомендации по найму
+    verdict = Column(String(50), nullable=True)  # заключение "Подходит" или "Не подходит"
+
+    create_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="processing")
     resume = relationship("Resume", back_populates="processing")

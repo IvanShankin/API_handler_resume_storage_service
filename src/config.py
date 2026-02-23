@@ -16,6 +16,7 @@ KEY_NEW_REQUIREMENTS = 'new_requirements'
 KEY_NEW_PROCESSING = 'new_processing'
 
 KEY_DELETE_PROCESSING = 'delete_processing'
+KEY_DELETE_RESUME = 'delete_resume'
 KEY_DELETE_REQUIREMENTS = 'delete_requirements'
 
 LOG_DIR = Path("../logs")

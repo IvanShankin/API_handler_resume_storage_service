@@ -82,7 +82,7 @@ async def test_get_resume(use_redis, create_resume):
     [True,False,]
 )
 async def test_get_requirements(use_redis, create_requirements):
-    redis_key = f'requirements:{create_requirements['user_id']}'
+    redis_key = f'requirements_by_user:{create_requirements['user_id']}'
 
     if use_redis:
         async with RedisWrapper() as redis:

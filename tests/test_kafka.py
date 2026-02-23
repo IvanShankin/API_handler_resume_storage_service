@@ -122,7 +122,7 @@ async def test_handler_key_new_requirements(clearing_kafka, db_session, create_u
     assert data_db
 
     async with RedisWrapper() as redis:
-        requirements_list_json = await redis.get(f'requirements:{data_for_kafka['user_id']}')
+        requirements_list_json = await redis.get(f'requirements_by_user:{data_for_kafka['user_id']}')
         assert requirements_list_json
         requirements_list = json.loads(requirements_list_json)
 

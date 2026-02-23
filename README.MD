@@ -129,13 +129,35 @@ docker-compose --env-file .test.env exec app pytest
 
 ---
 
-### 2. Данные резюме
+## 2. Данные резюме п отребованию
+**Ключ:** `resume_by_requirement:{requirement_id}`  
+**Значение:**  
+```json
+[
+    {
+      "resume_id": int,
+      "user_id": int,
+      "requirement_id": int,
+      "resume": str
+    }
+]
+```  
+**Источник:**  
+- `kafka_dependencies.py` (обработчик `handler_key_new_resume`)  
+
+**TTL:**  
+- STORAGE_TIME_DATA = (days=1)
+
+---
+
+### 3. Данные резюме
 **Ключ:** `resume:{resume_id}`  
 **Значение:**  
 ```json
 {
   "resume_id": int,
   "user_id": int,
+  "requirement_id": int,
   "resume": str
 }
 ```  
@@ -149,9 +171,9 @@ docker-compose --env-file .test.env exec app pytest
 
 ---
 
-### 3. Данные требований
+### 4. Данные требований
 **Ключ:**  
-- Все требования пользователя: `requirements:{user_id}`  
+- Все требования пользователя: `requirements_by_user:{user_id}`  
 - Конкретное требование: `requirements:{requirements_id}`  
 
 **Значение:**  
@@ -178,7 +200,7 @@ docker-compose --env-file .test.env exec app pytest
 
 ---
 
-### 4. Данные обработки
+### 5. Данные обработки
 **Ключ:**  
 - Все обработки пользователя: `processing:{user_id}`  
 - Обработки для конкретного требования: `processing_requirements:{user_id}:{requirements_id}`  
@@ -209,7 +231,7 @@ docker-compose --env-file .test.env exec app pytest
 
 ---
 
-### 5. Отметки об обработанных сообщениях Kafka
+### 6. Отметки об обработанных сообщениях Kafka
 **Ключ:** `processed_message:{message_id}`  
 **Значение:** `'_'` (метка)  
 **Назначение:** Исключение повторной обработки сообщений.  

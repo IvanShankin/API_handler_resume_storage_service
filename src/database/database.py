@@ -1,5 +1,8 @@
 import os
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Any
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
@@ -9,14 +12,15 @@ from src.database.base import Base
 
 load_dotenv()  # Загружает переменные из .env
 DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT')
 DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_NAME = os.getenv('DB_NAME')
 
 # URL для подключения к серверу PostgreSQL без указания конкретной базы данных
-POSTGRES_SERVER_URL = f'postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/postgres'
+POSTGRES_SERVER_URL = f'postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/postgres'
 # postgresql+asyncpg это означает, что БД работает в асинхронном режиме
-SQL_DB_URL = f'postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
+SQL_DB_URL = f'postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
 engine_for_create = create_async_engine(SQL_DB_URL)
 
@@ -28,9 +32,19 @@ session_local = sessionmaker(
     autoflush=False
 )
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, Any]:
     async with session_local() as db:  # Автоматическое закрытие сессии
         yield db
+
+@asynccontextmanager
+async def get_db_session():
+    async with session_local() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def create_database():
