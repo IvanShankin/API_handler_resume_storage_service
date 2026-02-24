@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from src.database.base import Base
 from src.config import MAX_CHAR_RESUME, MAX_CHAR_REQUIREMENTS
 
+
 class User(Base):
     __tablename__ = "users"
     user_id = Column(Integer, primary_key=True, nullable=False)
@@ -14,6 +15,7 @@ class User(Base):
     resume = relationship("Resume", back_populates="user")
     requirements = relationship("Requirements", back_populates="user")
     processing = relationship("Processing", back_populates="user")
+
 
 class Resume(Base):
     __tablename__ = "resume"
@@ -26,6 +28,7 @@ class Resume(Base):
     requirement = relationship("Requirements", back_populates="resume")
     processing = relationship("Processing", back_populates="resume")
 
+
 class Requirements(Base):
     __tablename__ = "requirements"
     requirements_id = Column(Integer, primary_key=True, nullable=False)
@@ -36,9 +39,6 @@ class Requirements(Base):
     resume = relationship("Resume", back_populates="requirement")
     processing = relationship("Processing", back_populates="requirements")
 
-    def to_dict(self):
-        """преобразует в словарь все колонки у выбранного объекта"""
-        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
 
 class Processing(Base):
     __tablename__ = "processing"
@@ -62,6 +62,3 @@ class Processing(Base):
     resume = relationship("Resume", back_populates="processing")
     requirements = relationship("Requirements", back_populates="processing")
 
-    def to_dict(self):
-        """преобразует в словарь все колонки у выбранного объекта"""
-        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}

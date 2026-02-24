@@ -5,19 +5,21 @@ from fastapi import  Query, APIRouter, Depends, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from twisted.python.log import logerr
 
 from src.access import get_current_user
-from src.config import logger, STORAGE_TIME_DATA, STORAGE_TIME_ALLS_DATA
-from src.database.database import get_db
+from src.database.core import get_db
 from src.database.models import User, Resume, Requirements, Processing
 from src.dependencies.redis_dependencies import Redis, get_redis
-from src.exception import NoRights, NotFoundData, InvalidParameters
+from src.exeptions.http_exc import NoRights, NotFoundData, InvalidParameters
 from src.schemas.request import ProcessingAndRequirementsID, SortField, SortOrder
 from src.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut, ProcessingDetailOut
+from src.service.config import get_config
+from src.service.utils.logger import get_logger
 from src.utils import prepare_processing_data
 
+
 router = APIRouter(prefix="/storage")
+
 
 async def chek_rights_redis(key: str, user_id: int, redis: Redis):
     """
@@ -44,6 +46,7 @@ async def validate_processing_data(
         processing_id = processing_id,
         requirements_id = requirements_id,
     )
+
 
 def _convert_to_output_model(data: str, in_detail: bool) -> Union[List[ProcessingOut], List[ProcessingDetailOut]]:
     """
@@ -101,7 +104,7 @@ async def search_processing(
         if data_redis:
             await redis.setex(
                 requirements_key,
-                STORAGE_TIME_DATA,
+                get_config().storage_time_data,
                 data_redis
             )  # обновляем срок кэширования
             return _convert_to_output_model(data_redis, in_detail)
@@ -123,7 +126,7 @@ async def search_processing(
         if processing:
             await redis.setex(
                 main_redis_key,
-                STORAGE_TIME_ALLS_DATA,
+                get_config().storage_time_alls_data,
                 json.dumps(processing)
             ) # обновляем срок кэширования
             return _convert_to_output_model(json.dumps(processing), in_detail)
@@ -149,7 +152,7 @@ async def search_processing(
     # основной кеш (все данные пользователя)
     await redis.setex(
         main_redis_key,
-        STORAGE_TIME_ALLS_DATA,
+        get_config().storage_time_alls_data,
         json.dumps(processed_data)
     )
 
@@ -159,7 +162,7 @@ async def search_processing(
         if req_processing:
             await redis.setex(
                 requirements_key,
-                STORAGE_TIME_DATA,
+                get_config().storage_time_data,
                 json.dumps(req_processing)
             )
 
@@ -171,6 +174,7 @@ async def search_processing(
         data_to_return = [p for p in processed_data if p["requirements_id"] == requirements_id]
 
     return _convert_to_output_model(json.dumps(data_to_return), in_detail)
+
 
 async def sorted_list_processing(
         processings: List[ProcessingOut],
@@ -210,14 +214,14 @@ async def health_check(
     try:
         await db.execute(text("SELECT 1"))
     except Exception:
-        logger.error("Database connection failed")
+        get_logger(__name__).error("Database connection failed")
         raise HTTPException(500, "Database unavailable")
 
     # Проверка Redis
     try:
         await redis_client.ping()
     except Exception as e:
-        logger.error(f"Redis connection failed: {e}")
+        get_logger(__name__).error(f"Redis connection failed: {e}")
         raise HTTPException(500, "Redis unavailable")
 
     return {"status": "OK"}
@@ -244,7 +248,7 @@ async def get_resume(
 ):
     redis_data = await chek_rights_redis(f'resume:{resume_id}', current_user.user_id, redis)
     if redis_data:
-        await redis.setex(f'resume:{resume_id}', STORAGE_TIME_DATA, json.dumps(redis_data))
+        await redis.setex(f'resume:{resume_id}', get_config().storage_time_data, json.dumps(redis_data))
         return ResumeOut(resume_id=redis_data['resume_id'], user_id=redis_data['user_id'], resume=redis_data['resume'])
 
     db_data = await db.execute(select(Resume).where(Resume.resume_id == resume_id))
@@ -253,7 +257,7 @@ async def get_resume(
         if db_resume.user_id == current_user.user_id:
             await redis.setex(
                 f'resume:{resume_id}',
-                STORAGE_TIME_DATA,
+                get_config().storage_time_data,
                 json.dumps({'resume_id': db_resume.resume_id, 'user_id': db_resume.user_id, 'resume': db_resume.resume}))
             return ResumeOut(resume_id=db_resume.resume_id, user_id=db_resume.user_id, resume=db_resume.resume)
         else:
@@ -272,10 +276,10 @@ async def get_resume(
     data_redis = await redis.get(f'resume_by_requirement:{requirement_id}')
     if data_redis:
         data_redis = json.loads(data_redis)
-        await redis.setex(f'resume_by_requirement:{requirement_id}', STORAGE_TIME_DATA, json.dumps(data_redis))
+        await redis.setex(f'resume_by_requirement:{requirement_id}', get_config().storage_time_data, json.dumps(data_redis))
 
         if data_redis:
-            logger.info("/get_resume_by_requirement - Нашли данные в redis")
+            get_logger(__name__).info("/get_resume_by_requirement - Нашли данные в redis")
             return [ResumeOut.model_validate(resume) for resume in data_redis]
 
     db_data = await db.execute(select(Resume).where(Resume.requirement_id == requirement_id))
@@ -284,10 +288,10 @@ async def get_resume(
     if db_resumes:  # если данные с БД есть
         await redis.setex(
             f'resume_by_requirement:{requirement_id}',
-            STORAGE_TIME_DATA,
+            get_config().storage_time_data,
             json.dumps([resume.to_dict() for resume in db_resumes]))
 
-        logger.info("/get_resume_by_requirement - Записали данные в redis")
+        get_logger(__name__).info("/get_resume_by_requirement - Записали данные в redis")
 
         return [ResumeOut.model_validate(resume.to_dict()) for resume in db_resumes]
     else:
@@ -307,7 +311,7 @@ async def get_requirements(
     try:
         redis_data = await chek_rights_redis(redis_key, current_user.user_id, redis)
         if redis_data:
-            await redis.setex(redis_key, STORAGE_TIME_DATA, json.dumps(redis_data)) # продлеваем время хранения
+            await redis.setex(redis_key, get_config().storage_time_data, json.dumps(redis_data)) # продлеваем время хранения
 
             if requirements_id: # если необходимо вернуть только одно значение
                 for req  in redis_data:
@@ -317,7 +321,7 @@ async def get_requirements(
             else:
                 return [RequirementsOut.model_validate(req) for req in redis_data]
     except Exception as e:
-        logger.error(f"Redis error: {e}")
+        get_logger(__name__).error(f"Redis error: {e}")
 
 
     # Запрос к БД
@@ -335,7 +339,7 @@ async def get_requirements(
     requirements_data = [req.to_dict() for req in db_requirements]
     await redis.setex(
         redis_key,
-        STORAGE_TIME_DATA,
+        get_config().storage_time_data,
         json.dumps(requirements_data)
     )
 

@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import AsyncGenerator, List
 
 from dotenv import load_dotenv
@@ -14,12 +14,11 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.config import logger, MIN_COMMIT_COUNT_KAFKA, KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, \
-    KEY_NEW_PROCESSING, STORAGE_TIME_DATA, KEY_DELETE_PROCESSING, KEY_DELETE_REQUIREMENTS, KEY_DELETE_RESUME
-from src.database.database import get_db, get_db_session
+from src.database.core import get_db
 from src.database.models import User, Resume, Requirements, Processing
-from src.dependencies.redis_dependencies import RedisWrapper
-from src.schemas.response import ResumeOut
+from src.dependencies import get_redis
+from src.service.config import get_config
+from src.service.utils.logger import get_logger
 from src.utils import prepare_processing_data
 
 load_dotenv()
@@ -39,6 +38,7 @@ def create_topic(topic_name, num_partitions=1, replication_factor=1):
     :param num_partitions: Количество партиций
     :param replication_factor: Фактор репликации
     """
+    logger = get_logger(__name__)
     # Создание объекта топика
     new_topic = NewTopic(
         topic_name,
@@ -81,15 +81,17 @@ class ConsumerKafka:
         self.consumer = Consumer(self.conf)
         self.running = True
         self.topic = topic
+        self.logger = get_logger(__name__)
+        self.conf = get_config()
         check_exists_topic([self.topic])
 
 
     # в эту функцию попадём при вызове метода consumer.commit
     def commit_completed(self, err, partitions):
         if err:
-            logger.error(str(err))
+            self.logger.error(str(err))
         else:
-            logger.info("сохранили партию kafka")
+            self.logger.info("сохранили партию kafka")
 
     async def _get_message_uid(self, msg) -> str:
         """Генерирует уникальный ID сообщения. Для одного и того же сообщения он будет идентичен"""
@@ -108,7 +110,7 @@ class ConsumerKafka:
         pass
 
     async def error_handler(self, e):
-        logger.error(f'Произошла ошибка при обработки сообщения c kafka: {str(e)}')
+        self.logger.error(f'Произошла ошибка при обработки сообщения c kafka: {str(e)}')
 
     async def _run_consumer(self):
         self.consumer.subscribe([self.topic])
@@ -127,7 +129,7 @@ class ConsumerKafka:
             else:
                 # проверка на обработанное сообщение
                 message_id = await self._get_message_uid(msg)
-                async with RedisWrapper() as redis:
+                async with get_redis() as redis:
                     if await redis.get(f"processed_message:{message_id}"):
                         continue
 
@@ -136,7 +138,7 @@ class ConsumerKafka:
                 await self.worker_topic(data, key, message_id)
 
                 msg_count += 1
-                if msg_count % MIN_COMMIT_COUNT_KAFKA == 0:
+                if msg_count % self.conf.min_commit_count_kafka == 0:
                     self.consumer.commit(asynchronous=True)
 
     def consumer_run(self):
@@ -160,18 +162,18 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             db.add(sql_object)
             await db.commit()
         except Exception as e:
-            logger.error(f"Kafka error: {str(e)}")
+            self.logger.error(f"Kafka error: {str(e)}")
 
     async def new_record_in_redis(self, key, json_str):
         try:
-            async with RedisWrapper() as redis:
+            async with get_redis() as redis:
                 await redis.setex(
                     key,
-                    STORAGE_TIME_DATA,
+                    self.conf.storage_time_data,
                     json_str
                 )
         except Exception as e:
-            logger.error(f"Ошибка при записи в redis: {str(e)}")
+            self.logger.error(f"Ошибка при записи в redis: {str(e)}")
 
     async def handler_key_new_user(self, data: dict)-> bool:
         """Вернёт успех выполнения"""
@@ -185,12 +187,12 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             await self.new_record_in_db(new_user)
             return True
         except Exception as e:
-            logger.error(f"Kafka New User Error: {str(e)}")
+            self.logger.error(f"Kafka New User Error: {str(e)}")
             return False
 
     async def handler_key_new_resume(self, data: dict) -> bool:
         """Вернёт успех выполнения"""
-        logger.info("Начали добавлять новое резюме")
+        self.logger.info("Начали добавлять новое резюме")
         try:
             new_record = Resume(
                 resume_id=data['resume_id'],
@@ -200,7 +202,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             )
             await self.new_record_in_db(new_record)
         except Exception as e:
-            logger.error(f"ошибка при получении данных о резюме с kafka: {str(e)}")
+            self.logger.error(f"ошибка при получении данных о резюме с kafka: {str(e)}")
             return False
 
         key = f'resume:{new_record.resume_id}'
@@ -235,12 +237,12 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                 requirements=data['requirements']
             )
         except Exception as e:
-            logger.error(f"ошибка при получении данных о требованиях с kafka: {str(e)}")
+            self.logger.error(f"ошибка при получении данных о требованиях с kafka: {str(e)}")
             return False
 
         key = f'requirements_by_user:{data['user_id']}'
 
-        async with RedisWrapper() as redis:
+        async with get_redis() as redis:
             data_redis = await redis.get(key)
 
             if data_redis:  # если данные в redis имеются
@@ -260,8 +262,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
 
                 if db_requirements:
                     # Подготовка данных для кэша
-                    requirements_data = [req.to_dict() for req in
-                                         db_requirements]  # делаем список из уже имеющихся данных
+                    requirements_data = [req.to_dict() for req in db_requirements]  # делаем список из уже имеющихся данных
                     requirements_data.append(data)  # Можем сохранять data т.к. она имеет уже необходимую структуру
                 else:
                     requirements_data = [data]
@@ -283,7 +284,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                 **data["response"]
             )
         except Exception as e:
-            logger.error(f"ошибка при получении данных о обработке с kafka: {str(e)}")
+            self.logger.error(f"ошибка при получении данных о обработке с kafka: {str(e)}")
             return False
 
 
@@ -295,7 +296,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
         )
 
         if result_db.scalar_one_or_none():
-            logger.info(
+            self.logger.info(
                 f"Processing с id = {data['response']['processing_id']} уже обработали"
             )
             return True
@@ -305,7 +306,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             .where(Resume.resume_id == data["response"]["resume_id"])
         )
         if not result_db.scalar_one_or_none():
-            logger.info(
+            self.logger.info(
                 f"Processing с id = {data['response']['processing_id']} "
                 f"невозможно добавить так как отсутствует указанный Resume = {data["response"]["resume_id"]}"
             )
@@ -316,7 +317,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             .where(Requirements.requirements_id == data["response"]["requirements_id"])
         )
         if not result_db.scalar_one_or_none():
-            logger.info(
+            self.logger.info(
                 f"Processing с id = {data['response']['processing_id']} "
                 f"невозможно добавить так как отсутствует указанный Requirements = {data["response"]["requirements_id"]}"
             )
@@ -369,7 +370,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             f"{data['response']['requirements_id']}"
         )
 
-        async with RedisWrapper() as redis:
+        async with get_redis() as redis:
             try:
                 # обновляем основной кеш (все обработки пользователя)
                 main_data = await redis.get(main_redis_key)
@@ -387,7 +388,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
 
                 await redis.setex(
                     main_redis_key,
-                    STORAGE_TIME_DATA,
+                    self.conf.storage_time_data,
                     json.dumps(main_list)
                 )
                 # обновляем кеш для конкретного требования
@@ -407,18 +408,18 @@ class ConsumerKafkaStorageService(ConsumerKafka):
 
                 await redis.setex(
                     requirements_key,
-                    STORAGE_TIME_DATA,
+                    self.conf.storage_time_data,
                     json.dumps(req_list))
 
                 await db.close()
                 return True
             except Exception as e:
-                logger.error(f"Redis error: {str(e)}")
+                self.logger.error(f"Redis error: {str(e)}")
                 await db.close()
                 return False
 
     async def handler_key_delete_resume(self, data: dict) -> bool:
-        logger.info(f"Запушено удаление резюме. data: {data}")
+        self.logger.info(f"Запушено удаление резюме. data: {data}")
 
         db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
         db = await db_gen.__anext__()
@@ -429,14 +430,14 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             await db.execute(delete(Resume).where(Resume.resume_id.in_(data["resume_ids"])))
             await db.commit()
         except Exception as e:
-            logger.error(f"Ошибка при удалении processing и resume: '{str(e)}'")
+            self.logger.error(f"Ошибка при удалении processing и resume: '{str(e)}'")
             await db.rollback()
             return False
 
         main_redis_key = f"processing:{data['user_id']}"
 
         try:
-            async with RedisWrapper() as redis:
+            async with get_redis() as redis:
                 main_list_processing = await redis.get(main_redis_key)
                 main_new_list_processing = []
 
@@ -446,7 +447,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                         if processing['processing_id'] not in data['processing_ids']: # если данный элемент не надо удалять
                             main_new_list_processing.append(processing)
 
-                    await redis.setex(main_redis_key, STORAGE_TIME_DATA, json.dumps(main_new_list_processing))
+                    await redis.setex(main_redis_key, self.conf.storage_time_data, json.dumps(main_new_list_processing))
 
                 for requirement_id in data["requirements_ids"]:
                     await redis.delete(f'resume_by_requirement:{requirement_id}')
@@ -462,17 +463,17 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                             if processing['processing_id'] not in data['processing_ids']:  # если данный элемент не надо удалять
                                 requirements_new_list_processing.append(processing)
 
-                        await redis.setex(requirements_key, STORAGE_TIME_DATA, json.dumps(requirements_new_list_processing))
+                        await redis.setex(requirements_key, self.conf.storage_time_data, json.dumps(requirements_new_list_processing))
 
         except Exception as e:
-            logger.exception(f'Ошибка в работе redis, при попытке удаления resume: {str(e)}')
+            self.logger.exception(f'Ошибка в работе redis, при попытке удаления resume: {str(e)}')
             return False
 
         return True
 
 
     async def handler_key_delete_processing(self, data: dict) -> bool:
-        logger.info(f"Запушено удаление обработки. data: {data}")
+        self.logger.info(f"Запушено удаление обработки. data: {data}")
 
         db_gen: AsyncGenerator[AsyncSession, None] = get_db()  # явно указываем тип данных
         db = await db_gen.__anext__()
@@ -487,14 +488,14 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             requirements_ids = result_db.scalars().all()
             await db.commit()
         except Exception as e:
-            logger.error(f"Ошибка при удалении processing: '{str(e)}'")
+            self.logger.error(f"Ошибка при удалении processing: '{str(e)}'")
             await db.rollback()
             return False
 
         main_redis_key = f"processing:{data['user_id']}"
 
         try:
-            async with RedisWrapper() as redis:
+            async with get_redis() as redis:
                 main_list_processing = await redis.get(main_redis_key)
                 main_new_list_processing = []
 
@@ -504,7 +505,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                         if processing['processing_id'] not in data['processing_ids']: # если данный элемент не надо удалять
                             main_new_list_processing.append(processing)
 
-                    await redis.setex(main_redis_key, STORAGE_TIME_DATA, json.dumps(main_new_list_processing))
+                    await redis.setex(main_redis_key, self.conf.storage_time_data, json.dumps(main_new_list_processing))
 
                 for requirement_id in requirements_ids:
                     requirements_key = f"processing_requirements:{data['user_id']}:{requirement_id}"
@@ -518,10 +519,10 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                             if processing['processing_id'] not in data['processing_ids']:  # если данный элемент не надо удалять
                                 requirements_new_list_processing.append(processing)
 
-                        await redis.setex(requirements_key, STORAGE_TIME_DATA, json.dumps(requirements_new_list_processing))
+                        await redis.setex(requirements_key, self.conf.storage_time_data, json.dumps(requirements_new_list_processing))
 
         except Exception as e:
-            logger.exception(f'Ошибка в работе redis, при попытке удаления processing: {str(e)}')
+            self.logger.exception(f'Ошибка в работе redis, при попытке удаления processing: {str(e)}')
             return False
 
         return True
@@ -541,11 +542,11 @@ class ConsumerKafkaStorageService(ConsumerKafka):
             await db.execute(delete(Requirements).where(Requirements.requirements_id.in_(data['requirements_ids'])))
             await db.commit()
         except Exception as e:
-            logger.error(f"Ошибка при удалении requirements: '{str(e)}'")
+            self.logger.error(f"Ошибка при удалении requirements: '{str(e)}'")
             await db.rollback()
             return False
 
-        async with RedisWrapper() as redis:
+        async with get_redis() as redis:
             try:
                 for requirement_id in data['requirements_ids']:
                     await redis.delete(f'resume_by_requirement:{requirement_id}')
@@ -561,7 +562,7 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                             if processing['processing_id'] not in data['processing_ids']:  # если данный элемент не надо удалять
                                 requirements_new_list_processing.append(processing)
 
-                        await redis.setex(requirements_key, STORAGE_TIME_DATA,json.dumps(requirements_new_list_processing))
+                        await redis.setex(requirements_key, self.conf.storage_time_data, json.dumps(requirements_new_list_processing))
 
                 redis_key = f'requirements_by_user:{data['user_id']}'
                 list_requirements = await redis.get(redis_key)
@@ -574,37 +575,37 @@ class ConsumerKafkaStorageService(ConsumerKafka):
                         if requirements['requirements_id'] not in data['requirements_ids']: # если не надо удалять
                             new_list_requirements.append(requirements)
 
-                    await redis.setex(redis_key, STORAGE_TIME_DATA, json.dumps(new_list_requirements))
+                    await redis.setex(redis_key, self.conf.storage_time_data, json.dumps(new_list_requirements))
 
             except Exception as e:
-                logger.error(f'Ошибка в работе redis, при попытке удаления requirements: {str(e)}')
+                self.logger.error(f'Ошибка в работе redis, при попытке удаления requirements: {str(e)}')
                 return False
 
         return True
 
     async def worker_topic(self, data: dict, key: str, message_id: str):
         success = None
-        if key == KEY_NEW_USER: # при поступлении нового запроса
+        if key == self.conf.consumer_keys.new_user: # при поступлении нового запроса
             success = await self.handler_key_new_user(data)
-        elif key == KEY_NEW_RESUME:
+        elif key == self.conf.consumer_keys.new_resume:
             success = await self.handler_key_new_resume(data)
-        elif key == KEY_NEW_REQUIREMENTS:
+        elif key == self.conf.consumer_keys.new_requirements:
             success = await self.handler_key_new_requirements(data)
-        elif key == KEY_NEW_PROCESSING:
+        elif key == self.conf.consumer_keys.new_processing:
             success = await self.handler_key_new_processing(data)
-        elif key == KEY_DELETE_RESUME:
+        elif key == self.conf.consumer_keys.delete_resume:
             success = await self.handler_key_delete_resume(data)
-        elif key == KEY_DELETE_PROCESSING:
+        elif key == self.conf.consumer_keys.delete_processing:
             success = await self.handler_key_delete_processing(data)
-        elif key == KEY_DELETE_REQUIREMENTS:
+        elif key == self.conf.consumer_keys.delete_requirements:
             success = await self.handler_key_delete_requirements(data)
 
         if success:
             # записываем что сообщение обработано
-            async with RedisWrapper() as redis:
-                await redis.setex(f"processed_message:{message_id}", STORAGE_TIME_DATA, '_')
+            async with get_redis() as redis:
+                await redis.setex(f"processed_message:{message_id}", self.conf.storage_time_data, '_')
         else:
-            logger.info(
+            self.logger.info(
                 f"Не обработали данные полученные от kafka: data = {data}, key = {key}, message_id = {message_id}"
             )
 

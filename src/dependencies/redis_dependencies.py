@@ -1,39 +1,38 @@
-import os
-from redis.asyncio import Redis  # Асинхронный клиент
-from dotenv import load_dotenv
-from fastapi.security import HTTPBearer
+from redis.asyncio import Redis
 
-load_dotenv()
-REDIS_HOST = os.getenv('REDIS_HOST')
-REDIS_PORT = int(os.getenv('REDIS_PORT'))
+from src.service.config import get_config
 
 
-security = HTTPBearer()
+_redis_client: Redis | None = None
 
-redis_client = Redis(
-    host=REDIS_HOST,  # Хост Redis-сервера
-    port=REDIS_PORT,  # Порт по умолчанию
-    db=0,  # Номер базы данных (0-15)
-    decode_responses=True  # Автоматическое декодирование из bytes в str
-)
 
-async def get_redis():
-    try:
-        yield redis_client
-    finally:
-        await redis_client.aclose()
+async def init_redis():
+    global _redis_client
 
-class RedisWrapper:
-    def __init__(self):
-        self.redis = Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=0,
-            decode_responses=True # автоматически преобразование с байт в строку
-        )
+    conf = get_config()
 
-    async def __aenter__(self):
-        return self.redis
+    _redis_client = Redis(
+        host=conf.env.redis_host,
+        port=conf.env.redis_port,
+        db=0,
+        decode_responses=True,
+    )
 
-    async def __aexit__(self, exc_type, exc, tb):
-        await self.redis.aclose()
+
+async def set_redis(redis: Redis):
+    global _redis_client
+    _redis_client = redis
+
+
+async def close_redis():
+    global _redis_client
+
+    if _redis_client:
+        await _redis_client.aclose()
+
+
+def get_redis() -> Redis:
+    if _redis_client is None:
+        raise RuntimeError("Redis not initialized")
+
+    return _redis_client

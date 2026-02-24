@@ -1,25 +1,19 @@
-import os
-from datetime import datetime, timedelta, UTC
-
 import redis
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import ValidationError
 
-from src.database.database import get_db
+from src.database.core import get_db
 from src.database.models import User
 from src.dependencies.redis_dependencies import get_redis
-from src.exception import InvalidCredentialsException
+from src.exeptions.http_exc import InvalidCredentialsException
 from src.schemas.response import UserOut
+from src.service.config import get_config
 
-load_dotenv()
-SECRET_KEY = os.getenv('SECRET_KEY')
-ACCESS_TOKEN_EXPIRE_MINUTES = float(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES'))
-ALGORITHM = os.getenv('ALGORITHM')
+
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="auth/login",
     scheme_name="OAuth2PasswordBearer",
@@ -32,12 +26,13 @@ async def get_current_user(
         db: AsyncSession = Depends(get_db),
         redis_client: redis.Redis = Depends(get_redis)
 ):
+    conf = get_config()
     try:
         # Декодируем токен
         payload = jwt.decode(
             token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM],
+            conf.env.secret_key,
+            algorithms=[conf.tokens.algorithm],
             options={"verify_exp": True}
         )
 
@@ -70,7 +65,7 @@ async def get_current_user(
     # сохраняем пользователя в Redis на время жизни токена
     await redis_client.setex(
         f"user:{user_id}",
-        int(ACCESS_TOKEN_EXPIRE_MINUTES * 60),  # Время жизни в секундах
+        int(conf.tokens.access_token_expire_minutes * 60),  # Время жизни в секундах
         user_out.model_dump_json()
     )
 
