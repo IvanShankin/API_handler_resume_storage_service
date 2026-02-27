@@ -1,0 +1,55 @@
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel
+
+from src.database.models import ProcessingStatus
+
+
+class NewUser(BaseModel):
+    user_id: int
+    username: str
+    full_name: str
+    created_at: datetime
+
+
+class NewResume(BaseModel):
+    resume_id: int
+    user_id: int
+    requirement_id: int
+    resume: str
+
+
+class NewRequirement(BaseModel):
+    requirement_id: int
+    user_id: int
+    requirements: str
+
+
+class EndProcessing(BaseModel):
+    processing_id: int
+    status: Optional[ProcessingStatus]  = None,
+    success: Optional[bool] = None,
+    message_error: Optional[str] = None,
+    wait_seconds: Optional[int] = None,
+    score: Optional[int] = None,
+    matches: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    verdict: Optional[str] = None
+
+
+class DeleteProcessing(BaseModel):
+    processing_ids: List[int]
+    resume_ids: List[int]
+
+
+class DeleteResume(BaseModel):
+    resume_ids: int
+    processing_ids: int
+    requirements_ids: int
+
+
+class DeleteRequirements(BaseModel):
+    requirement_ids: List[int]
+    resume_ids: List[int]
+    processing_ids: List[int]
+    user_id: int

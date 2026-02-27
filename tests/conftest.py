@@ -29,10 +29,10 @@ MODE=os.getenv('MODE')
 import pytest_asyncio
 
 from src.config import logger
-from src.database.models import User, Resume, Requirements, Processing
+from src.database.models import Users, Resumes, Requirements, Processing
 from src.database.core import create_database, get_db as original_get_db, SQL_DB_URL
 from src.dependencies.kafka_dependencies import admin_client, ConsumerKafkaStorageService
-from src.dependencies.redis_dependencies import RedisWrapper
+from src.infrastructure.redis.core import RedisWrapper
 
 
 TOPIC_LIST = [
@@ -200,8 +200,8 @@ async def clearing_db(db_session: AsyncSession, create_database_fixture):
     """Очищает базу банных"""
     await db_session.execute(delete(Processing))
     await db_session.execute(delete(Requirements))
-    await db_session.execute(delete(Resume))
-    await db_session.execute(delete(User))
+    await db_session.execute(delete(Resumes))
+    await db_session.execute(delete(Users))
     await db_session.commit()
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
@@ -278,13 +278,13 @@ async def create_user(db_session)->dict:
     Создаёт юзера в БД
     :return: dict {"user_id": int, "access_token": str, "username": str, "full_name": str, "created_at": datetime(UTC)}
     """
-    await db_session.execute(delete(User))
+    await db_session.execute(delete(Users))
     await db_session.commit()
 
-    max_id_result = await db_session.execute(select(func.max(User.user_id)))
+    max_id_result = await db_session.execute(select(func.max(Users.user_id)))
     next_id = (max_id_result.scalar() or 0) + 1
 
-    new_user = User(
+    new_user = Users(
         user_id=next_id,
         username='test_username',
         full_name='test_full_name',
@@ -323,10 +323,10 @@ async def create_resume(db_session, create_user)->dict:
     Создаёт резюме в БД
     :return: dict {"resume_id": int, "user_id": int, "access_token": str, "resume": str}
     """
-    max_id_result = await db_session.execute(select(func.max(Resume.resume_id)))
+    max_id_result = await db_session.execute(select(func.max(Resumes.resume_id)))
     next_id = (max_id_result.scalar() or 0 ) + 1 # определяем следующий свободный id
 
-    new_resume = Resume(
+    new_resume = Resumes(
         resume_id=next_id,
         user_id=create_user['user_id'],
         resume='test_resume',
@@ -379,7 +379,7 @@ async def create_resume_and_requirements(db_session, create_user)->dict:
         user_id=create_user['user_id'],
         requirements='test_requirements',
     )
-    new_resume = Resume(
+    new_resume = Resumes(
         resume_id=1,
         user_id=create_user['user_id'],
         resume='test_resume',
@@ -408,7 +408,7 @@ async def create_processing(
 ) -> dict:
     """
     Создаёт обработку (Processing) в БД, проверяя и создавая при необходимости Requirements.
-    Всегда создаёт новое Resume перед созданием Processing.
+    Всегда создаёт новое Resumes перед созданием Processing.
 
     :param db_session: Асинхронная сессия БД
     :param user_id: ID пользователя
@@ -445,10 +445,10 @@ async def create_processing(
         await db_session.refresh(requirements)
 
     # создаём новое резюме
-    max_resume_id = await db_session.execute(select(func.max(Resume.resume_id)))
+    max_resume_id = await db_session.execute(select(func.max(Resumes.resume_id)))
     new_resume_id = (max_resume_id.scalar() or 0) + 1
 
-    new_resume = Resume(
+    new_resume = Resumes(
         resume_id=new_resume_id,
         user_id=user_id,
         resume='test_resume',

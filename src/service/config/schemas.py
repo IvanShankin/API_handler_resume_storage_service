@@ -13,13 +13,6 @@ class Config:
     def __init__(self):
         init_env()
 
-        # используется для хранения всех данных о результатах обработки у конкретного пользователя
-        self.storage_time_alls_data: timedelta = timedelta(hours=8)
-        self.storage_time_data: timedelta = timedelta(days=1)
-
-        self.max_char_requirements: int = 5000
-        self.max_char_resume: int = 15000
-
         self.min_commit_count_kafka: int = 10
         self.login_block_time: timedelta = timedelta(seconds=200) # Период блокировки при частых попытках войти
 
@@ -28,6 +21,7 @@ class Config:
         self.paths = PathsConfig.build()
         self.tokens = TokensConfig.build()
         self.consumer_keys = ConsumerKeys.build()
+        self.lifespan_redis = LifespanInRedis.build()
 
 
 class EnvConfig(BaseModel):
@@ -137,10 +131,10 @@ class ConsumerKeys(BaseModel):
     new_user: str
     new_resume: str
     new_requirements: str
-    new_processing: str
+    end_processing: str
 
     delete_processing: str
-    delete_resume: str
+    delete_resumes: str
     delete_requirements: str
 
     @classmethod
@@ -149,9 +143,30 @@ class ConsumerKeys(BaseModel):
             new_user='new_user',
             new_resume='new_resume',
             new_requirements='new_requirements',
-            new_processing='new_processing',
+            end_processing='end_processing',
 
             delete_processing='delete_processing',
-            delete_resume='delete_resume',
+            delete_resumes='delete_resumes',
             delete_requirements='delete_requirements'
+        )
+
+
+class LifespanInRedis(BaseModel):
+    """Время жизни данных в Redis в секундах"""
+
+    user: int
+    resume_by_requirement: int
+    processing_by_resume: int
+    requirement_by_user: int
+
+    kafka_message: int
+
+    @classmethod
+    def build(cls) -> "LifespanInRedis":
+        return cls(
+            user=timedelta(days=1).seconds,
+            resume_by_requirement=timedelta(days=1).seconds,
+            processing_by_resume=timedelta(days=1).seconds,
+            requirement_by_user=timedelta(days=3).seconds,
+            kafka_message=timedelta(hours=5).seconds,
         )

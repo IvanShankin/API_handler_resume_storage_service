@@ -7,7 +7,7 @@ async def prepare_processing_data(p: Processing) -> dict:
     return {
         "processing_id": p.processing_id,
         "resume_id": p.resume_id,
-        "requirements_id": p.requirements_id,
+        "requirement_id": p.requirement_id,
         "user_id": p.user_id,
         "success": p.success,
         "score": p.score,

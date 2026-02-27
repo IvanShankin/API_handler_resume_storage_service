@@ -61,3 +61,10 @@ class ToManyRequest(HTTPException):
             detail=f"Слишком большое количество запросов. Повторите попытку через {rate_limit_in_seconds} секунд"
         )
 
+
+class ApiException(HTTPException):
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ошибка внутри сервера"
+        )

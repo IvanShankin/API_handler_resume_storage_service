@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 import pytest
@@ -6,19 +5,19 @@ from sqlalchemy import select
 
 from src.config import KEY_NEW_USER, KEY_NEW_RESUME, KEY_NEW_REQUIREMENTS, KEY_NEW_PROCESSING, KEY_DELETE_PROCESSING, \
     KEY_DELETE_REQUIREMENTS
-from src.database.models import User, Resume, Requirements, Processing
-from src.dependencies.redis_dependencies import RedisWrapper
+from src.database.models import Users, Resumes, Requirements, Processing
+from src.infrastructure.redis.core import RedisWrapper
 from tests.conftest import KAFKA_TOPIC_CONSUMER_FOR_UPLOADING_DATA, producer, create_processing, wait_for
 
 async def check_user_in_db(db_session, user_id)-> bool:
-    """Вернёт результат проверки на не наличие в БД User по его 'user_id'"""
-    result = await db_session.execute(select(User).where(User.user_id == user_id))
+    """Вернёт результат проверки на не наличие в БД Users по его 'user_id'"""
+    result = await db_session.execute(select(Users).where(Users.user_id == user_id))
     return result.scalar_one_or_none() is not None
 
 async def check_resume_in_db_and_redis(db_session, resume_id: int)-> bool:
-    """Вернёт результат проверки на не наличие в БД Resume по его 'resume_id'"""
+    """Вернёт результат проверки на не наличие в БД Resumes по его 'resume_id'"""
     result = await db_session.execute(
-        select(Resume).where(Resume.resume_id == resume_id)
+        select(Resumes).where(Resumes.resume_id == resume_id)
     )
     return result.scalar_one_or_none()
 
@@ -64,7 +63,7 @@ async def test_handler_key_new_user(clearing_kafka, db_session):
     # ожидание обработки
     await wait_for(lambda: check_user_in_db(db_session, data_for_kafka['user_id']), timeout=40)
 
-    request_db = await db_session.execute(select(User).where(User.user_id == data_for_kafka['user_id']))
+    request_db = await db_session.execute(select(Users).where(Users.user_id == data_for_kafka['user_id']))
     data_db = request_db.scalar_one_or_none()
 
     assert data_db
@@ -88,7 +87,7 @@ async def test_handler_key_new_resume(clearing_kafka, db_session, create_user):
     # ожидание обработки
     await wait_for(lambda: check_resume_in_db_and_redis(db_session, data_for_kafka['resume_id']), timeout=40)
 
-    request_db = await db_session.execute(select(Resume).where(Resume.resume_id == data_for_kafka['resume_id']))
+    request_db = await db_session.execute(select(Resumes).where(Resumes.resume_id == data_for_kafka['resume_id']))
     data_db = request_db.scalar_one_or_none()
     assert data_db
 

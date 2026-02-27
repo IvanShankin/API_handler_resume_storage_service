@@ -11,8 +11,8 @@
 
 ## Основные функции
    - Хранение и управление данными:
-     - Пользователи (`User`)
-     - Резюме (`Resume`)
+     - Пользователи (`Users`)
+     - Резюме (`Resumes`)
      - Требования (`Requirements`)
      - Результаты обработки (`Processing`)
    - Кеширование данных в Redis
@@ -174,14 +174,14 @@ docker-compose --env-file .test.env exec app pytest
 ### 4. Данные требований
 **Ключ:**  
 - Все требования пользователя: `requirements_by_user:{user_id}`  
-- Конкретное требование: `requirements:{requirements_id}`  
+- Конкретное требование: `requirements:{requirement_id}`  
 
 **Значение:**  
 - Для списка требований:  
   ```json
   [
     {
-      "requirements_id": int,
+      "requirement_id": int,
       "user_id": int,
       "requirements": str
     },
@@ -203,7 +203,7 @@ docker-compose --env-file .test.env exec app pytest
 ### 5. Данные обработки
 **Ключ:**  
 - Все обработки пользователя: `processing:{user_id}`  
-- Обработки для конкретного требования: `processing_requirements:{user_id}:{requirements_id}`  
+- Обработки для конкретного требования: `processing_requirements:{user_id}:{requirement_id}`  
 
 **Значение:**  
 ```json
@@ -211,7 +211,7 @@ docker-compose --env-file .test.env exec app pytest
   {
     "processing_id": int,
     "resume_id": int,
-    "requirements_id": int,
+    "requirement_id": int,
     "user_id": int,
     "create_at": str (ISO format),
     "score": int,
