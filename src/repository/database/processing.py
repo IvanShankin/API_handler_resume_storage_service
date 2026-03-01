@@ -48,7 +48,7 @@ class ProcessingRepository:
             matches=matches,
             recommendation=recommendation,
             verdict=verdict,
-            create_at=created_at
+            created_at=created_at
         )
 
         self.session_db.add(new_processing)

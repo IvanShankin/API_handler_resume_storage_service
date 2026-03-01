@@ -37,12 +37,15 @@ class BaseCache:
         :param time: Время жизни в секундах
         :param model_cls: Экземпляр модели БД. Один экземпляр или список экземпляров
         """
+        if isinstance(model_cls, list):
+            payload = [model.to_dict() for model in model_cls]
+        else:
+            payload = model_cls.to_dict()
+
         await self.redis_session.setex(
             key,
             time,
-            orjson.dumps(model.to_dict() for model in model_cls)
-            if model_cls is List else
-            orjson.dumps(model_cls.to_dict()),
+            orjson.dumps(payload),
         )
 
     async def delete(self, keys: List[str]):

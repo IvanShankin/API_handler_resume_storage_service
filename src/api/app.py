@@ -1,8 +1,8 @@
-import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 from fastapi import FastAPI
 
+from src.api.exception_handler import register_exception_handlers
 from src.api.requests import main_router
 from src.database.creating import create_database
 from src.infrastructure.kafka.admin_client import init_admin_client, shutdown_admin_client
@@ -25,6 +25,7 @@ def init_fastapi_app() -> FastAPI:
         lifespan=lifespan
     )
     _include_router(app)
+    register_exception_handlers(app)
     _app = app
 
     return app

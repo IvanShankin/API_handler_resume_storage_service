@@ -9,7 +9,7 @@ from src.schemas.response import UserOut, ResumeOut, RequirementsOut, Processing
 from src.service.processing import ProcessingService, get_processing_service
 from src.service.requirements import get_requirement_service, RequirementService
 from src.service.resumes import ResumeService, get_resume_service
-from src.service.users import UsersService, get_users_service
+from src.service.users import UserService, get_users_service
 from src.service.utils.health import health_check_service
 
 
@@ -27,7 +27,7 @@ async def health_check():
 @router.get("/me", response_model=UserOut)
 async def get_me(
     current_user: Users = Depends(get_current_user),
-    user_service: UsersService = Depends(get_users_service)
+    user_service: UserService = Depends(get_users_service)
 ):
     return await user_service.get_me(current_user)
 
@@ -38,7 +38,7 @@ async def get_resume(
     current_user: Users = Depends(get_current_user),
     resume_service: ResumeService = Depends(get_resume_service)
 ):
-    return resume_service.get_resume(resume_id, current_user.user_id)
+    return await resume_service.get_resume(resume_id, current_user.user_id)
 
 
 @router.get("/get_resume_by_requirement", response_model=List[ResumeOut])

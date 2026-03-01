@@ -11,14 +11,14 @@ from src.service.config.schemas import Config
 from src.service.processing.processing_service import ProcessingService
 from src.service.requirements.requirements_service import RequirementService
 from src.service.resumes.resumes_service import ResumeService
-from src.service.users import UsersService
+from src.service.users import UserService
 
 
 class KafkaEventHandlerService:
 
     def __init__(
         self,
-        user_service: UsersService,
+        user_service: UserService,
         requirement_service: RequirementService,
         resume_service: ResumeService,
         processing_service: ProcessingService,

@@ -46,7 +46,9 @@ class ResumeService:
         :except InsertionErrorService: Из-за отсутствия указанного ID или из-за уже существовании указанного resume_id
         """
         try:
-            async with self.session_db.begin():
+            tx_ctx = self.session_db.begin_nested() if self.session_db.in_transaction() else self.session_db.begin()
+
+            async with tx_ctx:
                 resume = await self.resume_repo.add_resume(
                     resume_id=resume_id,
                     requirement_id=requirement_id,

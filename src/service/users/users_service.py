@@ -12,7 +12,7 @@ from src.schemas.response import UserOut
 from src.service.config.schemas import Config
 
 
-class UsersService:
+class UserService:
 
     def __init__(
         self,
@@ -80,7 +80,9 @@ class UsersService:
         """
 
         try:
-            async with self.session_db.begin():
+            tx_ctx = self.session_db.begin_nested() if self.session_db.in_transaction() else self.session_db.begin()
+
+            async with tx_ctx:
                 user = await self.user_repo.add_user(
                     user_id=user_id,
                     username=username,

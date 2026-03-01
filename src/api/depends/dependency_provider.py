@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from src.database.models import Users
 from src.exeptions.http_exc import InvalidCredentialsException
 from src.exeptions.service_exc import InvalidJWTToken, UserNotFoundServ
-from src.service.users import UsersService, get_users_service
+from src.service.users import UserService, get_users_service
 
 
 oauth2_scheme = OAuth2PasswordBearer(
@@ -16,7 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    user_service: UsersService = Depends(get_users_service)
+    user_service: UserService = Depends(get_users_service)
 ) -> Users:
     try:
         return await user_service.get_current_user(token)

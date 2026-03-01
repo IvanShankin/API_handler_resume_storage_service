@@ -1,38 +1,48 @@
-import json
-from datetime import datetime
-
 import pytest
-from httpx import AsyncClient, ASGITransport
 
-from src.infrastructure.redis.core import RedisWrapper
-from src.main import app
-from tests.conftest import DICT_FOR_PROCESSING, DICT_FOR_PROCESSING_DETAIL, create_processing
+from helper_func import comparison_models
+from receiving_fixtures import create_requirement, create_processing
+from src.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut
+
+
+@pytest.mark.asyncio
+async def test_health_check(
+    client_with_db
+):
+    response = await client_with_db.get("storage/health")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_health_check():
-    async with AsyncClient(
-            transport=ASGITransport(app),
-            base_url="http://test",
-    ) as ac:
-        response = await ac.get("/health")
-        assert response.status_code == 200
+async def test_me(client_with_db, create_user):
+    user, accesses_token = await create_user()
+    response = await client_with_db.get("storage/me", headers={"Authorization": f"Bearer {accesses_token}"})
+
+    assert response.status_code == 200
+
+    user_out = UserOut(**(response.json()))
+
+    assert user_out.user_id == user.user_id
+    assert user_out.username == user.username
+
 
 @pytest.mark.asyncio
-async def test_me(create_user):
-    async with AsyncClient(
-            transport=ASGITransport(app),
-            base_url="http://test",
-    ) as ac:
-        response = await ac.get("/me", headers={"Authorization": f"Bearer {create_user['access_token']}"})
-        assert response.status_code == 200
+async def test_get_resume(resume_service_fix, create_resume, create_user, client_with_db):
+    user, accesses_token = await create_user()
+    new_resume = await create_resume(user.user_id)
 
-        data_response = response.json()
+    response = await client_with_db.get(
+        "storage/get_resume",
+        headers={"Authorization": f"Bearer {accesses_token}"},
+        params = {'resume_id': new_resume.resume_id},
+    )
 
-        assert data_response['user_id'] == create_user['user_id']
-        assert data_response['username'] == create_user['username']
-        assert data_response['full_name'] == create_user['full_name']
-        assert str(data_response['created_at']).replace('T', ' ').replace('Z', '+00:00') == str(create_user['created_at'])
+    assert response.status_code == 200
+
+    resume_out = ResumeOut(**(response.json()))
+
+    assert new_resume.resume_id == resume_out.resume_id
+    assert new_resume.resume == resume_out.resume
 
 
 @pytest.mark.parametrize(
@@ -40,348 +50,135 @@ async def test_me(create_user):
     [True,False,]
 )
 @pytest.mark.asyncio
-async def test_get_resume(use_redis, create_resume):
-    redis_key = f'resume:{create_resume['user_id']}'
+async def test_get_resume_by_requirement(
+    use_redis,
+    create_user,
+    resume_service_fix,
+    create_resume,
+    create_requirement,
+    client_with_db
+):
+    user, accesses_token = await create_user()
+    requirement = await create_requirement(user.user_id)
+    resume_1 = await create_resume(user_id=user.user_id, requirement_id=requirement.requirement_id)
+    resume_2 = await create_resume(user_id=user.user_id, requirement_id=requirement.requirement_id)
+    resume_other = await create_resume() # резюме у другого пользователя
 
-    if use_redis:
-        async with RedisWrapper() as redis:
-            await redis.set(
-                redis_key,
-                json.dumps({
-                    'resume_id': create_resume['resume_id'],
-                    'user_id': create_resume['user_id'],
-                    'resume': create_resume['resume']
-                })
-            )
+    if not use_redis:
+        await resume_service_fix.resume_cache_repo.delete_by_requirement(requirement.requirement_id)
 
-    async with AsyncClient(
-            transport=ASGITransport(app),
-            base_url="http://test",
-    ) as ac:
-        response = await ac.get(
-            "/get_resume",
-            params={'resume_id': create_resume['resume_id']},
-            headers={"Authorization": f"Bearer {create_resume['access_token']}"}
-        )
-        assert response.status_code == 200
+    response = await client_with_db.get(
+        "storage/get_resume_by_requirement",
+        headers={"Authorization": f"Bearer {accesses_token}"},
+        params = {'requirement_id': requirement.requirement_id},
+    )
 
-        data_response = response.json()
+    assert response.status_code == 200
 
-        async with RedisWrapper() as redis:
-            data_redis = json.loads(await redis.get(redis_key))
-            assert data_redis
+    list_resume_dicts = response.json()
+    assert [ResumeOut(**resume_dict) for resume_dict in list_resume_dicts] # просто должен нормально преобразоваться
 
-        assert data_response['resume_id'] == create_resume['resume_id'] == data_redis['resume_id']
-        assert data_response['user_id'] == create_resume['user_id'] == data_redis['user_id']
-        assert data_response['resume'] == create_resume['resume'] == data_redis['resume']
+    assert any(comparison_models(resume_1.to_dict(), resume_dict) for resume_dict in list_resume_dicts)
+    assert any(comparison_models(resume_2.to_dict(), resume_dict) for resume_dict in list_resume_dicts)
+    assert not any(comparison_models(resume_other.to_dict(), resume_dict) for resume_dict in list_resume_dicts)
+
+    if not use_redis:
+        # в redis должны обновить данные
+        resumes_in_redis = await resume_service_fix.resume_cache_repo.get_by_requirement(requirement.requirement_id)
+        assert any(comparison_models(resume_1, resume) for resume in resumes_in_redis)
+        assert any(comparison_models(resume_2, resume) for resume in resumes_in_redis)
+        assert not any(comparison_models(resume_other, resume) for resume in resumes_in_redis)
 
 
 @pytest.mark.asyncio
+async def test_get_requirements(create_user, client_with_db, create_requirement):
+    user, accesses_token = await create_user()
+    new_requirement = await create_requirement(user.user_id)
+
+    response = await client_with_db.get(
+        f"storage/get_requirement/{new_requirement.requirement_id}",
+        headers={"Authorization": f"Bearer {accesses_token}"},
+    )
+
+    assert response.status_code == 200
+
+    requirement_out = RequirementsOut(**(response.json()))
+
+    assert comparison_models(new_requirement, requirement_out.model_dump())
+
+
 @pytest.mark.parametrize(
     'use_redis',
     [True,False,]
 )
-async def test_get_requirements(use_redis, create_requirements):
-    redis_key = f'requirements_by_user:{create_requirements['user_id']}'
+@pytest.mark.asyncio
+async def test_get_requirements(
+    use_redis,
+    create_user,
+    create_requirement,
+    requirement_service_fix,
+    client_with_db
+):
+    user, accesses_token = await create_user()
+    requirement_1 = await create_requirement(user.user_id)
+    requirement_2 = await create_requirement(user.user_id)
+    requirement_other = await create_requirement() # требования у другого пользователя
 
-    if use_redis:
-        async with RedisWrapper() as redis:
-            await redis.set(
-                redis_key,
-                json.dumps([{
-                    'requirements_id': create_requirements['requirements_id'],
-                    'user_id': create_requirements['user_id'],
-                    'requirements': create_requirements['requirements']
-                }])
-            )
+    if not use_redis:
+        await requirement_service_fix.requirement_cache_repo.delete_by_user(user.user_id)
 
-    async with AsyncClient(
-            transport=ASGITransport(app),
-            base_url="http://test",
-    ) as ac:
-        response = await ac.get(
-            "/get_requirements",
-            params={'requirements_id': create_requirements['requirements_id']},
-            headers={"Authorization": f"Bearer {create_requirements['access_token']}"}
-        )
-        assert response.status_code == 200
-
-        data_response = response.json()[0] # берём первый элемент списка
-
-        async with RedisWrapper() as redis:
-            requirements_list = json.loads(await redis.get(redis_key))
-            for requirements in requirements_list:
-                if requirements['requirements_id'] == create_requirements['requirements_id']: data_redis = requirements
-
-            assert data_redis
-
-        assert data_response['requirements_id'] == create_requirements['requirements_id'] == data_redis['requirements_id']
-        assert data_response['user_id'] == create_requirements['user_id'] == data_redis['user_id']
-        assert data_response['requirements'] == create_requirements['requirements'] == data_redis['requirements']
-
-
-class TestGetProcessing:
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        'use_redis, url_request, expected_api_fields',
-        [
-            # проверка get_processing
-            (True, '/get_processing', DICT_FOR_PROCESSING),
-            (False, '/get_processing', DICT_FOR_PROCESSING),
-
-            # проверка get_processing_detail
-            (True, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-            (False, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-        ]
+    response = await client_with_db.get(
+        "storage/get_requirements",
+        headers={"Authorization": f"Bearer {accesses_token}"},
     )
-    async def test_get_all(self, use_redis, url_request, expected_api_fields, db_session,  create_user):
-        main_redis_key = f'processing:{create_user['user_id']}'
 
-        processing_list = []
-        length_processing_list = 5
+    assert response.status_code == 200
 
-        for i in range(length_processing_list):
-            processing_list.append(await create_processing(db_session, create_user['user_id'], i))
+    list_requirement_dicts = response.json()
+    assert [RequirementsOut(**resume_dict) for resume_dict in list_requirement_dicts] # просто должен нормально преобразоваться
 
-        if use_redis:
-            async with RedisWrapper() as redis:
-                await redis.set(main_redis_key,json.dumps(processing_list) )
+    assert any(comparison_models(requirement_1.to_dict(), resume_dict) for resume_dict in list_requirement_dicts)
+    assert any(comparison_models(requirement_2.to_dict(), resume_dict) for resume_dict in list_requirement_dicts)
+    assert not any(comparison_models(requirement_other.to_dict(), resume_dict) for resume_dict in list_requirement_dicts)
 
-        async with AsyncClient(
-                transport=ASGITransport(app),
-                base_url="http://test",
-        ) as ac:
-            response = await ac.get(
-                url_request,
-                headers={"Authorization": f"Bearer {create_user['access_token']}"}
-            ) # пробуем взять всё
-            assert response.status_code == 200
+    if not use_redis:
+        # в redis должны обновить данные
+        resumes_in_redis = await requirement_service_fix.requirement_cache_repo.get_by_user(user.user_id)
+        assert any(comparison_models(requirement_1, resume) for resume in resumes_in_redis)
+        assert any(comparison_models(requirement_2, resume) for resume in resumes_in_redis)
+        assert not any(comparison_models(requirement_other, resume) for resume in resumes_in_redis)
 
-            data_response = response.json()
-            # проверяем условия на количество вернувшихся объектов
-            assert len(data_response) == length_processing_list
 
-            # Проверяем данные из API
-            for api_item in data_response:
-                # Находим соответствующий исходный объект
-                original_item = next(
-                    p for p in processing_list
-                    if p['processing_id'] == api_item['processing_id']
-                )
+@pytest.mark.asyncio
+async def test_get_processing_by_resume(create_user, client_with_db, create_resume, create_processing):
+    user, accesses_token = await create_user()
+    processing = await create_processing(user_id=user.user_id)
 
-                # Проверяем, что API вернуло только ожидаемые поля
-                assert set(api_item.keys()) == expected_api_fields
-
-                # Проверяем значения полей
-                for field in expected_api_fields:
-                    assert api_item[field] == original_item[field]
-
-            # проверяем данные в Redis
-            async with RedisWrapper() as redis:
-                redis_data = json.loads(await redis.get(main_redis_key))
-                assert len(redis_data) == length_processing_list
-
-                # Проверяем, что в Redis сохранились полные данные
-                for redis_item in redis_data:
-                    original_item = next(
-                        p for p in processing_list
-                        if p['processing_id'] == redis_item['processing_id']
-                    )
-                    # Проверяем, что все поля исходных данных есть в Redis
-                    for field in original_item:
-                        if field == 'create_at':
-                            assert datetime.fromisoformat(redis_item[field]) == datetime.fromisoformat(original_item[field])
-                        else:
-                            assert redis_item[field] == original_item[field]
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        'use_redis, url_request, expected_api_fields',
-        [
-            # проверка get_processing
-            (True, '/get_processing', DICT_FOR_PROCESSING),
-            (False, '/get_processing', DICT_FOR_PROCESSING),
-
-            # проверка get_processing_detail
-            (True, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-            (False, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-        ]
+    response = await client_with_db.get(
+        f"storage/get_processing_by_resume/{processing.resume_id}",
+        headers={"Authorization": f"Bearer {accesses_token}"},
     )
-    async def test_get_by_processing_id(self, use_redis, url_request, expected_api_fields, db_session, create_user):
-        main_redis_key = f'processing:{create_user['user_id']}'
 
-        original_data = await create_processing(db_session, create_user['user_id'], 1)
-        false_data = await create_processing(db_session, create_user['user_id'], 2) # создание данных с другим processing_id
+    assert response.status_code == 200
 
-        if use_redis:
-            async with RedisWrapper() as redis:
-                await redis.set(main_redis_key,json.dumps([original_data]))
-                await redis.set(main_redis_key,json.dumps([false_data]))
+    processing_out = ProcessingOut(**(response.json()))
 
-        async with AsyncClient(
-                transport=ASGITransport(app),
-                base_url="http://test",
-        ) as ac:
-            response = await ac.get(
-                url_request,
-                params={'processing_id': original_data['processing_id']},
-                headers={"Authorization": f"Bearer {create_user['access_token']}"}
-            ) # пробуем взять всё
-            assert response.status_code == 200
+    assert comparison_models(processing, processing_out.model_dump())
 
-            data_response = response.json()[0] # берём первый элемент списка
 
-            # проверяем, что API вернуло только ожидаемые поля
-            assert set(data_response.keys()) == expected_api_fields
+@pytest.mark.asyncio
+async def test_check_exceptions(create_user, client_with_db):
+    user, accesses_token = await create_user()
 
-            # проверяем значения полей
-            for field in expected_api_fields:
-                assert data_response[field] == original_data[field]
-
-            # проверяем данные в Redis
-            async with RedisWrapper() as redis:
-                redis_data = json.loads(await redis.get(main_redis_key))[0] # берём первый элемент
-
-                # Проверяем, что все поля исходных данных есть в Redis
-                for field in redis_data:
-                    if field == 'create_at':
-                        assert datetime.fromisoformat(redis_data[field]) == datetime.fromisoformat(original_data[field])
-                    else:
-                        assert redis_data[field] == original_data[field]
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        'use_redis, url_request, expected_api_fields',
-        [
-            # проверка get_processing
-            (True, '/get_processing', DICT_FOR_PROCESSING),
-            (False, '/get_processing', DICT_FOR_PROCESSING),
-
-            # проверка get_processing_detail
-            (True, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-            (False, '/get_processing_detail', DICT_FOR_PROCESSING_DETAIL),
-        ]
+    response = await client_with_db.get(
+        f"storage/get_processing_by_resume/1",
+        headers={"Authorization": f"Bearer {accesses_token}"},
     )
-    async def test_get_by_processing_id(self, use_redis, url_request, expected_api_fields, db_session, create_user):
-        length_processing_list = 5
 
-        requirements_id = 1
-        false_requirements_id = 2
+    # не должно происходить исключение внутри сервера, а должен пройти через exception_handler
+    assert response.status_code == 404
 
-        requirements_redis_key = f'processing_requirements:{create_user['user_id']}:{requirements_id}'
-        false_requirements_redis_key = f'processing_requirements:{create_user['user_id']}:{false_requirements_id}'
-
-        processing_list = []
-        false_processing_list = []
-
-        for i in range(length_processing_list):
-            processing_list.append(await create_processing(db_session, create_user['user_id'], 1))
-            false_processing_list.append(await create_processing(db_session, create_user['user_id'], false_requirements_id))
-
-        if use_redis:
-            async with RedisWrapper() as redis:
-                await redis.set(requirements_redis_key, json.dumps(processing_list))
-                await redis.set(false_requirements_redis_key, json.dumps(processing_list))
-
-        async with AsyncClient(
-                transport=ASGITransport(app),
-                base_url="http://test",
-        ) as ac:
-            response = await ac.get(
-                url_request,
-                params={'requirements_id': requirements_id},
-                headers={"Authorization": f"Bearer {create_user['access_token']}"}
-            )  # пробуем взять всё
-            assert response.status_code == 200
-
-            data_response = response.json()
-
-            # Проверяем данные из API
-            for api_item in data_response:
-                # Находим соответствующий исходный объект
-                original_item = next(
-                    p for p in processing_list
-                    if p['processing_id'] == api_item['processing_id']
-                )
-
-                # Проверяем, что API вернуло только ожидаемые поля
-                assert set(api_item.keys()) == expected_api_fields
-
-                # Проверяем значения полей
-                for field in expected_api_fields:
-                    assert api_item[field] == original_item[field]
-
-            # проверяем данные в Redis
-            async with RedisWrapper() as redis:
-                redis_data = json.loads(await redis.get(requirements_redis_key))
-                assert len(redis_data) == length_processing_list
-
-                # Проверяем, что в Redis сохранились полные данные
-                for redis_item in redis_data:
-                    original_item = next(
-                        p for p in processing_list
-                        if p['processing_id'] == redis_item['processing_id']
-                    )
-                    # Проверяем, что все поля исходных данных есть в Redis
-                    for field in original_item:
-                        if field == 'create_at':
-                            assert datetime.fromisoformat(redis_item[field]) == datetime.fromisoformat(
-                                original_item[field])
-                        else:
-                            assert redis_item[field] == original_item[field]
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        'url_request, expected_api_fields, sort_field,  type_sort',
-        [
-            # проверка get_processing
-            ('/get_processing', DICT_FOR_PROCESSING, 'create_at', 'asc'),
-            ('/get_processing', DICT_FOR_PROCESSING, 'create_at', 'desc'),
-            ('/get_processing', DICT_FOR_PROCESSING, 'score', 'asc'),
-            ('/get_processing', DICT_FOR_PROCESSING, 'score', 'desc'),
-
-            # проверка get_processing_detail
-            ('/get_processing_detail', DICT_FOR_PROCESSING_DETAIL, 'create_at', 'asc'),
-            ('/get_processing_detail', DICT_FOR_PROCESSING_DETAIL, 'create_at', 'desc'),
-            ('/get_processing_detail', DICT_FOR_PROCESSING_DETAIL, 'score', 'asc'),
-            ('/get_processing_detail', DICT_FOR_PROCESSING_DETAIL, 'score', 'desc'),
-        ]
+    response = await client_with_db.get(
+        f"storage/get_processing_by_resume/1",
     )
-    async def test_get_sorted(self, url_request, expected_api_fields, sort_field, type_sort, db_session, create_user):
-        main_redis_key = f'processing:{create_user['user_id']}'
-
-        processing_list = []
-        length_processing_list = 5
-
-        for i in range(length_processing_list):
-            processing_list.append(await create_processing(db_session, create_user['user_id'], i))
-
-        # сортируем список
-        if type_sort == 'asc':
-            processing_list = sorted(processing_list, key=lambda x: x[sort_field], reverse=False)
-        else:
-            processing_list = sorted(processing_list, key=lambda x: x[sort_field], reverse=True)
-
-
-        async with RedisWrapper() as redis:
-            await redis.set(main_redis_key, json.dumps(processing_list))
-
-        async with AsyncClient(
-                transport=ASGITransport(app),
-                base_url="http://test",
-        ) as ac:
-            response = await ac.get(
-                url_request,
-                params={'sort_by': sort_field, 'order': type_sort},
-                headers={"Authorization": f"Bearer {create_user['access_token']}"}
-            )  # пробуем взять всё
-            assert response.status_code == 200
-
-            data_response = response.json()
-            # проверяем условия на количество вернувшихся объектов
-            assert len(data_response) == length_processing_list
-
-            for i in range(length_processing_list):
-                for field in expected_api_fields:
-                    assert data_response[i][field] == processing_list[i][field], f"поле '{field}' не совпало"
-
+    assert response.status_code == 401

@@ -9,12 +9,12 @@ from src.service.processing import ProcessingService, get_processing_service
 from src.service.requirements import get_requirement_service
 from src.service.requirements.requirements_service import RequirementService
 from src.service.resumes import get_resume_service, ResumeService
-from src.service.users import UsersService, get_users_service
+from src.service.users import UserService, get_users_service
 from src.service.utils.logger import get_logger
 
 
 async def get_kafka_event_handler_service(
-    user_service: UsersService = Depends(get_users_service),
+    user_service: UserService = Depends(get_users_service),
     requirement_service: RequirementService = Depends(get_requirement_service),
     resume_service: ResumeService = Depends(get_resume_service),
     processing_service: ProcessingService = Depends(get_processing_service),

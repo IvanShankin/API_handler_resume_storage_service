@@ -45,7 +45,9 @@ class RequirementService:
         :except IDAlreadyExists: Из-за существования указанного ID
         """
         try:
-            async with self.session_db.begin():
+            tx_ctx = self.session_db.begin_nested() if self.session_db.in_transaction() else self.session_db.begin()
+
+            async with tx_ctx:
                 requirement = await self.requirement_repo.add_requirement(
                     requirement_id=requirement_id,
                     user_id=user_id,

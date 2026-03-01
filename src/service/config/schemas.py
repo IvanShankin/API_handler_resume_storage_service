@@ -164,9 +164,9 @@ class LifespanInRedis(BaseModel):
     @classmethod
     def build(cls) -> "LifespanInRedis":
         return cls(
-            user=timedelta(days=1).seconds,
-            resume_by_requirement=timedelta(days=1).seconds,
-            processing_by_resume=timedelta(days=1).seconds,
-            requirement_by_user=timedelta(days=3).seconds,
-            kafka_message=timedelta(hours=5).seconds,
+            user=int(timedelta(days=1).total_seconds()),
+            resume_by_requirement=int(timedelta(days=1).total_seconds()),
+            processing_by_resume=int(timedelta(days=1).total_seconds()),
+            requirement_by_user=int(timedelta(days=3).total_seconds()),
+            kafka_message=int(timedelta(hours=5).total_seconds()),
         )
