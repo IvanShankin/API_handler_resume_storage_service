@@ -26,6 +26,7 @@ class ConsumerKafka:
             self.topic,
             bootstrap_servers=self.conf.env.kafka_bootstrap_servers,
             group_id=f"storage-group-{time.time()}",
+            retry_backoff_ms=2000,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
         )
