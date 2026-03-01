@@ -12,12 +12,14 @@ from src.database.models import Users, Resumes, Processing, Requirements
 from src.infrastructure.redis.core import get_redis
 from src.repository.database import UserRepository, ResumeRepository, ProcessingRepository, RequirementRepository
 from src.repository.redis import UserCacheRepository, ResumeCacheRepository, ProcessingCacheRepository, \
-    RequirementCacheRepository
+    RequirementCacheRepository, KafkaMessageCacheRepository
 from src.service.config import get_config
+from src.service.kafka import KafkaEventHandlerService
 from src.service.processing import ProcessingService
 from src.service.requirements import RequirementService
 from src.service.resumes import ResumeService
 from src.service.users import UserService
+from src.service.utils.logger import get_logger
 
 
 @pytest_asyncio.fixture
@@ -167,7 +169,7 @@ async def processing_service_fix(session_db) -> ProcessingService:
 
 
 @pytest_asyncio.fixture
-async def create_processing(processing_service_fix, create_resume, session_db, ):
+async def create_processing(processing_service_fix, create_resume, session_db):
     async def _factory(user_id: Optional[int] = None) -> Processing:
         result = await session_db.execute(
             select(func.max(Processing.processing_id))
@@ -187,3 +189,25 @@ async def create_processing(processing_service_fix, create_resume, session_db, )
         return new_processing
 
     yield _factory
+
+
+@pytest_asyncio.fixture
+async def kafka_event_handler_fix(
+    user_service_fix,
+    requirement_service_fix,
+    resume_service_fix,
+    processing_service_fix,
+) -> KafkaEventHandlerService:
+    conf = get_config()
+    return KafkaEventHandlerService(
+        user_service=user_service_fix,
+        requirement_service=requirement_service_fix,
+        resume_service=resume_service_fix,
+        processing_service=processing_service_fix,
+        kafka_message_cache= KafkaMessageCacheRepository(
+            redis_session=get_redis(),
+            config=conf,
+        ),
+        logger=get_logger(__name__),
+        config=conf,
+    )

@@ -2,6 +2,7 @@ from typing import TypeVar, Type, List, Any
 
 from orjson import orjson
 from redis.asyncio import Redis
+from sqlalchemy import inspect
 
 from src.database.base import Base
 from src.service.config.schemas import Config
@@ -16,6 +17,23 @@ class BaseCache:
         self.redis_session = redis_session
         self.conf = config
 
+    def _restore_enums(self, model_cls, data: dict) -> dict:
+        mapper = inspect(model_cls)
+
+        for column in mapper.columns:
+            col_type = column.type
+
+            if hasattr(col_type, "enum_class") and col_type.enum_class:
+                enum_cls = col_type.enum_class
+                field_name = column.name
+
+                if field_name in data and data[field_name] is not None:
+                    # если значение строка — конвертируем
+                    if isinstance(data[field_name], str):
+                        data[field_name] = enum_cls(data[field_name])
+
+        return data
+
     async def get(self, key: str, model_cls: Type[T], storage_list: bool = False) -> Any:
         """
         Если по указанному ключу имеются данные, то передаст каждый ключ как аргумент в `model_cls`
@@ -28,9 +46,16 @@ class BaseCache:
 
         if result_redis:
             data = orjson.loads(result_redis)
-            return [model_cls(**one_model) for one_model in data ]  if storage_list else model_cls(**data)
 
-        return []  if storage_list else None
+            if storage_list:
+                return [
+                    model_cls(**self._restore_enums(model_cls, one_model))
+                    for one_model in data
+                ]
+            else:
+                return model_cls(**self._restore_enums(model_cls, data))
+
+        return [] if storage_list else None
 
     async def set(self, key: str, time: int, model_cls: T | List[T]):
         """

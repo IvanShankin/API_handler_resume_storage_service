@@ -74,6 +74,6 @@ async def get_processing_detail_by_resume(
     current_user: Users = Depends(get_current_user),
     processing_service: ProcessingService = Depends(get_processing_service)
 ):
-    return await processing_service.get_by_resume(resume_id, current_user.user_id)
+    return await processing_service.get_processing_by_resume(resume_id, current_user.user_id)
 
 

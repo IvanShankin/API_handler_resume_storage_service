@@ -65,7 +65,7 @@ class ProcessingService:
         await self.processing_cache_repo.set_by_resume(processing)
         return processing
 
-    async def get_by_resume(self, resume_id: int, user_id: int) -> Processing:
+    async def get_processing_by_resume(self, resume_id: int, user_id: int) -> Processing:
         """
         :raise NoRightsService: При недостатке прав у пользователя на просмотр данных
         :raise ResourceNotFound: Если данные не найдены

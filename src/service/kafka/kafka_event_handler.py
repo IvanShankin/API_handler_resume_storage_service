@@ -5,8 +5,8 @@ from orjson import orjson
 from src.database.models import ProcessingStatus
 from src.exeptions.service_exc import IDAlreadyExists, InsertionErrorService
 from src.repository.redis.kafka_message_cache import KafkaMessageCacheRepository
-from src.schemas.kafka_data import NewUser, EndProcessing, DeleteProcessing, NewResume, DeleteResume, NewRequirement, \
-    DeleteRequirements
+from src.schemas.kafka_data import NewUser, DeleteProcessing, NewResume, DeleteResume, NewRequirement, \
+    DeleteRequirements, EndProcessingForFunc
 from src.service.config.schemas import Config
 from src.service.processing.processing_service import ProcessingService
 from src.service.requirements.requirements_service import RequirementService
@@ -68,7 +68,7 @@ class KafkaEventHandlerService:
                 )
 
         elif key == self.conf.consumer_keys.end_processing:
-            new_user_data = EndProcessing(
+            new_user_data = EndProcessingForFunc(
                 status=ProcessingStatus.SUCCESSFULLY if data["success"] else  ProcessingStatus.FAILED,
                 **data
             )

@@ -1,12 +1,12 @@
-import enum
+from enum import Enum as PyEnum
 
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY, Boolean, func, Enum
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, ARRAY, Boolean, func, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 
 from src.database.base import Base
 
 
-class ProcessingStatus(enum.Enum):
+class ProcessingStatus(PyEnum):
     IN_PROGRESS = "in_progress"
     SUCCESSFULLY = "successfully"
     FAILED = "failed"
@@ -60,12 +60,11 @@ class Processing(Base):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
 
     status = Column(
-        Enum(
+        SQLEnum(
             ProcessingStatus,
-            values_callable=lambda x: [e.value for e in x],
-            name="account_status"
+            name="account_status",
         ),
-        nullable=False
+        nullable=False,
     )
 
     success = Column(Boolean, nullable=False)

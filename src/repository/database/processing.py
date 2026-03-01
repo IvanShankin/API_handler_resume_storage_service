@@ -79,24 +79,23 @@ class ProcessingRepository:
         verdict: str | None,
     ) -> Processing | None:
         data_for_update = {}
+        data_for_update["processing_id"] = processing_id
 
-        if processing_id:
-            data_for_update["processing_id"] = processing_id
-        if status:
+        if not status is None:
             data_for_update["status"] = status
-        if success:
+        if not success is None:
             data_for_update["success"] = success
-        if message_error:
+        if not message_error is None:
             data_for_update["message_error"] = message_error
-        if wait_seconds:
+        if not wait_seconds is None:
             data_for_update["wait_seconds"] = wait_seconds
-        if score:
+        if not score is None:
             data_for_update["score"] = score
-        if matches:
+        if not matches is None:
             data_for_update["matches"] = matches
-        if recommendation:
+        if not recommendation is None:
             data_for_update["recommendation"] = recommendation
-        if verdict:
+        if not verdict is None:
             data_for_update["verdict"] = verdict
 
         if data_for_update:

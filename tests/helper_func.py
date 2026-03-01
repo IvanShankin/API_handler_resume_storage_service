@@ -1,8 +1,9 @@
 from datetime import datetime, UTC, timedelta
-from typing import Type
+from typing import Type, Optional
 from dateutil.parser import parse
 
 from jose import jwt
+from orjson import orjson
 
 from src.service.config import get_config
 from src.service.utils.logger import get_logger
@@ -15,6 +16,26 @@ class FakeAdminClient:
     async def list_topics(self):
         conf = get_config()
         return [conf.env.topic_uploading_data]
+
+
+class FakeKafkaMessage:
+    def __init__(
+        self,
+        data: dict,
+        topic: str,
+        key: Optional[str] = None,
+        partition: int = 0,
+        offset: int = 0,
+    ) -> None:
+        self.topic: str = topic
+        self.partition: int = partition
+        self.offset: int = offset
+
+        self.key: Optional[bytes] = (
+            key.encode("utf-8") if key is not None else None
+        )
+
+        self.value: bytes = orjson.dumps(data)
 
 
 def create_accesses_token(user_id: int) -> str:

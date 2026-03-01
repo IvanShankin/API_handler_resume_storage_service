@@ -16,7 +16,8 @@ from src.service.config import init_config
 # ФИКСТУРЫ НЕ УБИРАТЬ, ИСПОЛЬЗУЮТСЯ В ТЕСТАХ
 from tests.help_fixtures import session_db, client_with_db
 from tests.receiving_fixtures import user_service_fix, create_user, resume_service_fix, requirement_service_fix, \
-    create_requirement, resume_service_fix, create_resume, processing_service_fix, create_processing
+    create_requirement, resume_service_fix, create_resume, processing_service_fix, create_processing, \
+    kafka_event_handler_fix
 
 
 @pytest_asyncio.fixture(scope='session', autouse=True)
@@ -37,8 +38,8 @@ async def start_test():
 async def clearing_db(session_db):
     """Очищает базу банных"""
     await session_db.execute(delete(Processing))
-    await session_db.execute(delete(Requirements))
     await session_db.execute(delete(Resumes))
+    await session_db.execute(delete(Requirements))
     await session_db.execute(delete(Users))
     await session_db.commit()
 
@@ -47,5 +48,5 @@ async def clearing_db(session_db):
 async def clearing_redis():
     redis = get_redis()
     await redis.flushall()
-    await redis.close()
+    await redis.aclose()
     return redis

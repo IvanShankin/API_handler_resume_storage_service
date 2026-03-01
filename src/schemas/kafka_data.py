@@ -25,16 +25,19 @@ class NewRequirement(BaseModel):
     requirements: str
 
 
-class EndProcessing(BaseModel):
+class EndProcessingReceived(BaseModel):
     processing_id: int
-    status: Optional[ProcessingStatus]  = None,
-    success: Optional[bool] = None,
-    message_error: Optional[str] = None,
-    wait_seconds: Optional[int] = None,
-    score: Optional[int] = None,
-    matches: Optional[str] = None,
-    recommendation: Optional[str] = None,
+    success: Optional[bool] = None
+    message_error: Optional[str] = None
+    wait_seconds: Optional[int] = None
+    score: Optional[int] = None
+    matches: Optional[List[str]] = None
+    recommendation: Optional[str] = None
     verdict: Optional[str] = None
+
+
+class EndProcessingForFunc(EndProcessingReceived):
+    status: Optional[ProcessingStatus] = None,
 
 
 class DeleteProcessing(BaseModel):
@@ -43,9 +46,9 @@ class DeleteProcessing(BaseModel):
 
 
 class DeleteResume(BaseModel):
-    resume_ids: int
-    processing_ids: int
-    requirements_ids: int
+    resume_ids: List[int]
+    processing_ids: List[int]
+    requirement_ids: List[int]
 
 
 class DeleteRequirements(BaseModel):
