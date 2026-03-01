@@ -14,17 +14,17 @@ class ResumeCacheRepository(BaseCache):
 
     async def get_by_requirement(self, requirement_id: int) -> List[Resumes] | None:
         return await super().get(
-            key=f"resumes_by_requirement:{requirement_id}",
+            key=f"storage:resumes_by_requirement:{requirement_id}",
             model_cls=Resumes,
             storage_list=True
         )
 
     async def set_by_requirement(self, requirement_id: int, resumes: List[Resumes]) -> None:
         await super().set(
-            key=f"resumes_by_requirement:{requirement_id}",
+            key=f"storage:resumes_by_requirement:{requirement_id}",
             time=self.conf.lifespan_redis.resume_by_requirement,
             model_cls=resumes
         )
 
     async def delete_by_requirement(self, requirement_id: int) -> None:
-        await super().delete(keys=[f"resumes_by_requirement:{requirement_id}"])
+        await super().delete(keys=[f"storage:resumes_by_requirement:{requirement_id}"])

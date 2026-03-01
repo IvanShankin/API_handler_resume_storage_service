@@ -76,7 +76,7 @@ class Processing(Base):
     # только при success == True
     score = Column(Integer, nullable=True)
     matches = Column(ARRAY(String), nullable=True)  # перечисление навыков которые совпадают требованию
-    recommendation = Column(String(700), nullable=True)  # рекомендации по найму
+    recommendation = Column(String(1500), nullable=True)  # рекомендации по найму
     verdict = Column(String(50), nullable=True)  # заключение "Подходит" или "Не подходит"
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -14,17 +14,17 @@ class RequirementCacheRepository(BaseCache):
 
     async def get_by_user(self, user_id: int) -> List[Requirements] | None:
         return await super().get(
-            key=f"requirements_by_user:{user_id}",
+            key=f"storage:requirements_by_user:{user_id}",
             model_cls=Requirements,
             storage_list=True
         )
 
     async def set_by_user(self, user_id: int, requirements: List[Requirements]) -> None:
         await super().set(
-            key=f"requirements_by_user:{user_id}",
-            time=self.conf.lifespan_redis.resume_by_requirement,
+            key=f"storage:requirements_by_user:{user_id}",
+            time=self.conf.lifespan_redis.requirement_by_user,
             model_cls=requirements
         )
 
     async def delete_by_user(self, user_id: int) -> None:
-        await super().delete(keys=[f"requirements_by_user:{user_id}"])
+        await super().delete(keys=[f"storage:requirements_by_user:{user_id}"])
