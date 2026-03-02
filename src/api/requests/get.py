@@ -1,10 +1,11 @@
-from typing import List
-from fastapi import APIRouter, Depends, Path
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Path, Query
 
 from src.api.depends.dependency_provider import get_current_user
 from src.database.models import Users
 from src.exeptions.service_exc import ServiceException
 from src.exeptions.http_exc import ApiException
+from src.schemas.request import ResumeSortField
 from src.schemas.response import UserOut, ResumeOut, RequirementsOut, ProcessingOut
 from src.service.processing import ProcessingService, get_processing_service
 from src.service.requirements import get_requirement_service, RequirementService
@@ -44,10 +45,18 @@ async def get_resume(
 @router.get("/get_resume_by_requirement", response_model=List[ResumeOut])
 async def get_resume(
     requirement_id: int,
+    sort: Optional[ResumeSortField] = Query(
+        default=None,
+        description="Сортировка резюме"
+    ),
     current_user: Users = Depends(get_current_user),
     resume_service: ResumeService = Depends(get_resume_service)
 ):
-    return await resume_service.get_resume_by_requirements(requirement_id, current_user.user_id)
+    return await resume_service.get_resume_by_requirements(
+        requirement_id,
+        current_user.user_id,
+        sort=sort
+    )
 
 
 @router.get("/get_requirement/{requirement_id}", response_model=RequirementsOut)
