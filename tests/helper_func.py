@@ -22,7 +22,7 @@ class FakeKafkaMessage:
     def __init__(
         self,
         data: dict,
-        topic: str,
+        topic: str = "test_topic",
         key: Optional[str] = None,
         partition: int = 0,
         offset: int = 0,

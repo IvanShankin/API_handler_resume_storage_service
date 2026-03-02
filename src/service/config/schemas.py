@@ -131,6 +131,8 @@ class ConsumerKeys(BaseModel):
     new_user: str
     new_resume: str
     new_requirements: str
+    new_processing: str
+
     end_processing: str
 
     delete_processing: str
@@ -143,6 +145,7 @@ class ConsumerKeys(BaseModel):
             new_user='new_user',
             new_resume='new_resume',
             new_requirements='new_requirements',
+            new_processing='new_processing',
             end_processing='end_processing',
 
             delete_processing='delete_processing',

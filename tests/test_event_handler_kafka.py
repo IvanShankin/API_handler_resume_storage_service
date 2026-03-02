@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import select, func
 
 from helper_func import FakeKafkaMessage
-from src.database.models import Resumes, Requirements, ProcessingStatus
+from src.database.models import Resumes, Requirements, ProcessingStatus, Processing
 from src.exeptions.service_exc import ResourceNotFound
 from src.schemas.kafka_data import NewUser, NewResume, NewRequirement, DeleteResume, DeleteRequirements, \
-    DeleteProcessing, EndProcessingReceived
+    DeleteProcessing, EndProcessingReceived, NewProcessing
 
 
 class TestEventHandlerKafka:
@@ -21,7 +21,6 @@ class TestEventHandlerKafka:
                 full_name="full_name",
                 created_at=datetime.now(UTC)
             ).model_dump(),
-            topic="users-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.new_user,
         )
 
@@ -49,7 +48,6 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="resumes-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.new_resume,
         )
 
@@ -75,13 +73,38 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="requirements-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.new_requirements,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
 
         assert await requirement_service_fix.get_requirement(requirement_id=next_id, user_id=new_user.user_id)
+
+    @pytest.mark.asyncio
+    async def test_new_processing(self, kafka_event_handler_fix, session_db, create_resume, processing_service_fix):
+        result = await session_db.execute(
+            select(func.max(Processing.processing_id))
+        )
+        max_id = result.scalar_one_or_none()
+        next_id = (max_id or 0) + 1
+
+        resume = await create_resume()
+
+        payload = NewProcessing(
+            processing_id=next_id,
+            resume_id=resume.resume_id,
+            requirement_id=resume.requirement_id,
+            user_id=resume.user_id,
+        ).model_dump()
+
+        msg = FakeKafkaMessage(
+            data=payload,
+            key=kafka_event_handler_fix.conf.consumer_keys.new_processing,
+        )
+
+        await kafka_event_handler_fix.handler_messages(msg)
+
+        assert await processing_service_fix.get_processing_by_resume(resume_id=resume.resume_id, user_id=resume.user_id)
 
     @pytest.mark.asyncio
     async def test_end_processing_success_and_failed(self, kafka_event_handler_fix, create_processing, processing_service_fix):
@@ -95,7 +118,6 @@ class TestEventHandlerKafka:
         ).model_dump()
         msg_success = FakeKafkaMessage(
             data=payload_success,
-            topic="processing-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.end_processing,
         )
         await kafka_event_handler_fix.handler_messages(msg_success)
@@ -114,7 +136,6 @@ class TestEventHandlerKafka:
         ).model_dump()
         msg_failed = FakeKafkaMessage(
             data=payload_failed,
-            topic="processing-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.end_processing,
             offset=2
         )
@@ -140,7 +161,6 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="resumes-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.delete_resumes,
         )
 
@@ -162,7 +182,6 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="processing-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.delete_processing,
         )
 
@@ -192,7 +211,6 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="requirements-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.delete_requirements,
         )
 
@@ -213,7 +231,6 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            topic="users-topic",
             key=kafka_event_handler_fix.conf.consumer_keys.new_user,
         )
 

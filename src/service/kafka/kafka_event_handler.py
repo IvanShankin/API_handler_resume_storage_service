@@ -6,7 +6,7 @@ from src.database.models import ProcessingStatus
 from src.exeptions.service_exc import IDAlreadyExists, InsertionErrorService
 from src.repository.redis.kafka_message_cache import KafkaMessageCacheRepository
 from src.schemas.kafka_data import NewUser, DeleteProcessing, NewResume, DeleteResume, NewRequirement, \
-    DeleteRequirements, EndProcessingForFunc
+    DeleteRequirements, EndProcessingForFunc, NewProcessing
 from src.service.config.schemas import Config
 from src.service.processing.processing_service import ProcessingService
 from src.service.requirements.requirements_service import RequirementService
@@ -67,6 +67,16 @@ class KafkaEventHandlerService:
                     f"Требование с ID = {new_requirement_data.requirement_id} уже имеется и не будет добавлено"
                 )
 
+        elif key == self.conf.consumer_keys.new_processing:
+            new_processing = NewProcessing(**data)
+            try:
+                await self.processing_service.create_processing(**(new_processing.model_dump()))
+            except InsertionErrorService:
+                self.logger.warning(
+                    f"Обработка с данным ID = {new_processing.processing_id} не будет добавлен. "
+                    f"Оно либо уже имеется, либо отсутствуют данные на которое оно ссылается"
+                )
+
         elif key == self.conf.consumer_keys.end_processing:
             new_user_data = EndProcessingForFunc(
                 status=ProcessingStatus.SUCCESSFULLY if data["success"] else  ProcessingStatus.FAILED,
@@ -105,5 +115,13 @@ class KafkaEventHandlerService:
             else None
         )
 
-        await self._handler_by_key(data, key, message_id)
-
+        try:
+            await self._handler_by_key(data, key, message_id)
+        except Exception:
+            self.logger.exception(
+                f"Обработка сообщения из kafka завершилась с ошибкой. Данные о сообщении: \n"
+                f"data: {data}\n"
+                f"key: {key}\n"
+                f"message_id: {message_id}\n\n"
+                "Ошибка: "
+            )

@@ -25,6 +25,13 @@ class NewRequirement(BaseModel):
     requirements: str
 
 
+class NewProcessing(BaseModel):
+    processing_id: int
+    resume_id: int
+    requirement_id: int
+    user_id: int
+
+
 class EndProcessingReceived(BaseModel):
     processing_id: int
     success: Optional[bool] = None
