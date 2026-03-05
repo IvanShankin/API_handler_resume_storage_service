@@ -68,7 +68,7 @@ class TestEventHandlerKafka:
         payload = NewRequirement(
             requirement_id=next_id,
             user_id=new_user.user_id,
-            requirements="Тестовое требование из kafka"
+            requirement="Тестовое требование из kafka"
         ).model_dump()
 
         msg = FakeKafkaMessage(

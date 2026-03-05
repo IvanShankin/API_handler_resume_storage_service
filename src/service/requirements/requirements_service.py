@@ -39,7 +39,7 @@ class RequirementService:
         self,
         requirement_id: int,
         user_id: int,
-        requirements: str
+        requirement: str
     ) -> Requirements:
         """
         :except IDAlreadyExists: Из-за существования указанного ID
@@ -48,10 +48,10 @@ class RequirementService:
             tx_ctx = self.session_db.begin_nested() if self.session_db.in_transaction() else self.session_db.begin()
 
             async with tx_ctx:
-                requirement = await self.requirement_repo.add_requirement(
+                requirement_db = await self.requirement_repo.add_requirement(
                     requirement_id=requirement_id,
                     user_id=user_id,
-                    requirements=requirements,
+                    requirements=requirement,
                 )
 
                 # flush чтобы поймать IntegrityError здесь
@@ -64,7 +64,7 @@ class RequirementService:
             user_id=user_id,
             requirements=await self.requirement_repo.get_by_user(user_id)
         )
-        return requirement
+        return requirement_db
 
     async def get_requirements_by_user(self, user_id: int) -> List[Requirements]:
         """

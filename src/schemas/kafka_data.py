@@ -22,7 +22,7 @@ class NewResume(BaseModel):
 class NewRequirement(BaseModel):
     requirement_id: int
     user_id: int
-    requirements: str
+    requirement: str
 
 
 class NewProcessing(BaseModel):

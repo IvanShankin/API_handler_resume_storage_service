@@ -30,7 +30,7 @@ class Resumes(Base):
     resume_id = Column(Integer, primary_key=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     requirement_id = Column(Integer, ForeignKey('requirements.requirement_id'), nullable=False)
-    resume = Column(String(15000), nullable=False)
+    resume = Column(String(20000), nullable=False)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -43,7 +43,7 @@ class Requirements(Base):
     __tablename__ = "requirements"
     requirement_id = Column(Integer, primary_key=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    requirements = Column(String(5000), nullable=False)
+    requirements = Column(String(10000), nullable=False)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

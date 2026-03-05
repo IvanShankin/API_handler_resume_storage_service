@@ -144,7 +144,7 @@ class ConsumerKeys(BaseModel):
         return cls(
             new_user='new_user',
             new_resume='new_resume',
-            new_requirements='new_requirements',
+            new_requirements='new_requirement',
             new_processing='new_processing',
             end_processing='end_processing',
 
