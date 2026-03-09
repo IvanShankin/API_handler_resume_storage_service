@@ -34,75 +34,83 @@ class KafkaEventHandlerService:
         self.logger = logger
         self.conf = config
 
+        # Обработчики для каждого топика
+        self.handlers = {
+            self.conf.kafka_topics.user_created: self._user_created,
+            self.conf.kafka_topics.resume_created: self._resume_created,
+            self.conf.kafka_topics.requirements_created: self._requirement_created,
+            self.conf.kafka_topics.processing_created: self._processing_created,
+            self.conf.kafka_topics.processing_finished: self._processing_finished,
+
+            self.conf.kafka_topics.resumes_deleted: self._resumes_deleted,
+            self.conf.kafka_topics.processing_deleted: self._processing_deleted,
+            self.conf.kafka_topics.requirements_deleted: self._requirements_deleted,
+        }
+
     def _get_message_uid(self, msg) -> str:
         return f"{msg.topic}:{msg.partition}:{msg.offset}"
 
-    async def _handler_by_key(self, data: dict, key: str, message_id: str):
-
-        if key == self.conf.consumer_keys.new_user:
-            new_user_data = NewUser(**data)
-            try:
-                await self.user_service.create_user(**(new_user_data.model_dump()))
-            except IDAlreadyExists:
-                self.logger.warning(
-                    f"пользователь с данным ID = {new_user_data.user_id} уже имеется и не будет добавлен"
-                )
-
-        elif key == self.conf.consumer_keys.new_resume:
-            new_resume_data = NewResume(**data)
-            try:
-                await self.resume_service.create_resume(**(new_resume_data.model_dump()))
-            except InsertionErrorService:
-                self.logger.warning(
-                    f"Резюме с данным ID = {new_resume_data.resume_id} не будет добавлен. "
-                    f"Оно либо уже имеется, либо отсутствуют данные на которое оно ссылается"
-                )
-
-        elif key == self.conf.consumer_keys.new_requirements:
-            new_requirement_data = NewRequirement(**data)
-            try:
-                await self.requirement_service.create_requirement(**(new_requirement_data.model_dump()))
-            except IDAlreadyExists:
-                self.logger.warning(
-                    f"Требование с ID = {new_requirement_data.requirement_id} уже имеется и не будет добавлено"
-                )
-
-        elif key == self.conf.consumer_keys.new_processing:
-            new_processing = NewProcessing(**data)
-            try:
-                await self.processing_service.create_processing(
-                    processing_id=new_processing.processing_id,
-                    resume_id=new_processing.resume_id,
-                    requirement_id=new_processing.requirement_id,
-                    user_id=new_processing.user_id,
-                )
-            except InsertionErrorService:
-                self.logger.warning(
-                    f"Обработка с данным ID = {new_processing.processing_id} не будет добавлен. "
-                    f"Оно либо уже имеется, либо отсутствуют данные на которое оно ссылается"
-                )
-
-        elif key == self.conf.consumer_keys.end_processing:
-            new_user_data = EndProcessingForFunc(
-                status=ProcessingStatus.SUCCESSFULLY if data["success"] else  ProcessingStatus.FAILED,
-                **data
+    async def _user_created(self, data: dict):
+        new_user_data = NewUser(**data)
+        try:
+            await self.user_service.create_user(**(new_user_data.model_dump()))
+        except IDAlreadyExists:
+            self.logger.warning(
+                f"пользователь с данным ID = {new_user_data.user_id} уже имеется и не будет добавлен"
             )
-            await self.processing_service.update_processing(**(new_user_data.model_dump()))
 
-        elif key == self.conf.consumer_keys.delete_resumes:
-            data_for_deleting = DeleteResume(**data)
-            await self.resume_service.delete_resume(**(data_for_deleting.model_dump()))
+    async def _resume_created(self, data: dict):
+        new_resume_data = NewResume(**data)
+        try:
+            await self.resume_service.create_resume(**(new_resume_data.model_dump()))
+        except InsertionErrorService:
+            self.logger.warning(
+                f"Резюме с данным ID = {new_resume_data.resume_id} не будет добавлен. "
+                f"Оно либо уже имеется, либо отсутствуют данные на которое оно ссылается"
+            )
 
-        elif key == self.conf.consumer_keys.delete_processing:
-            data_for_deleting = DeleteProcessing(**data)
-            await self.processing_service.delete_processing(**(data_for_deleting.model_dump()))
+    async def _requirement_created(self, data: dict):
+        new_requirement_data = NewRequirement(**data)
+        try:
+            await self.requirement_service.create_requirement(**(new_requirement_data.model_dump()))
+        except IDAlreadyExists:
+            self.logger.warning(
+                f"Требование с ID = {new_requirement_data.requirement_id} уже имеется и не будет добавлено"
+            )
 
-        elif key == self.conf.consumer_keys.delete_requirements:
-            data_for_deleting = DeleteRequirements(**data)
-            await self.requirement_service.delete_requirement(**(data_for_deleting.model_dump()))
+    async def _processing_created(self, data: dict):
+        new_processing = NewProcessing(**data)
+        try:
+            await self.processing_service.create_processing(
+                processing_id=new_processing.processing_id,
+                resume_id=new_processing.resume_id,
+                requirement_id=new_processing.requirement_id,
+                user_id=new_processing.user_id,
+            )
+        except InsertionErrorService:
+            self.logger.warning(
+                f"Обработка с данным ID = {new_processing.processing_id} не будет добавлен. "
+                f"Оно либо уже имеется, либо отсутствуют данные на которое оно ссылается"
+            )
 
-        # записываем что сообщение обработано
-        await self.kafka_message_cache.set(message_id)
+    async def _processing_finished(self, data: dict):
+        new_user_data = EndProcessingForFunc(
+            status=ProcessingStatus.SUCCESSFULLY if data["success"] else ProcessingStatus.FAILED,
+            **data
+        )
+        await self.processing_service.update_processing(**(new_user_data.model_dump()))
+
+    async def _resumes_deleted(self, data: dict):
+        data_for_deleting = DeleteResume(**data)
+        await self.resume_service.delete_resume(**(data_for_deleting.model_dump()))
+
+    async def _processing_deleted(self, data: dict):
+        data_for_deleting = DeleteProcessing(**data)
+        await self.processing_service.delete_processing(**(data_for_deleting.model_dump()))
+
+    async def _requirements_deleted(self, data: dict):
+        data_for_deleting = DeleteRequirements(**data)
+        await self.requirement_service.delete_requirement(**(data_for_deleting.model_dump()))
 
     async def handler_messages(self, msg):
         """
@@ -121,7 +129,14 @@ class KafkaEventHandlerService:
         )
 
         try:
-            await self._handler_by_key(data, key, message_id)
+            handler = self.handlers.get(msg.topic)
+            if handler:
+                await handler(data)
+            else:
+                self.logger.warning(f"Не нашли топик из config для сообщения. Топик: {msg.topic}")
+
+            # записываем что сообщение обработано
+            await self.kafka_message_cache.set(message_id)
         except Exception:
             self.logger.exception(
                 f"Обработка сообщения из kafka завершилась с ошибкой. Данные о сообщении: \n"

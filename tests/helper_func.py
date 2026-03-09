@@ -15,7 +15,7 @@ class FakeAdminClient:
 
     async def list_topics(self):
         conf = get_config()
-        return [conf.env.topic_uploading_data]
+        return [conf.kafka_topics.all_topics]
 
 
 class FakeKafkaMessage:
@@ -73,7 +73,7 @@ def comparison_models(Expected: Type | dict, Actual: Type | dict, keys_not_check
                 comparison_models(Expected[key], Actual[key])
             else:
                 if not Expected[key] == Actual[key]:
-                    get_logger(__name__).info(f"ключ '{key}' не совпал")
+                    get_logger().info(f"ключ '{key}' не совпал")
                     return False
 
         return True

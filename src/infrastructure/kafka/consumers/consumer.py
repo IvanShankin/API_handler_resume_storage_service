@@ -1,7 +1,7 @@
 import asyncio
 import time
 from logging import Logger
-from typing import Any
+from typing import Any, List
 
 from aiokafka import AIOKafkaConsumer
 
@@ -9,12 +9,12 @@ from src.service.config.schemas import Config
 
 
 class ConsumerKafka:
-    def __init__(self, topic: str, handler_msg_cls: Any, logger: Logger, config: Config):
+    def __init__(self, topics: List[str], handler_msg_cls: Any, logger: Logger, config: Config):
         """
-        :param topic: Топик по которому будет слушать
+        :param topics: Топик по которому будет слушать
         :param handler_msg_cls: Любой экземпляр класса имеющий асинхронный метод `handler_messages`
         """
-        self.topic = topic
+        self.topics = topics
         self.handler_msg_cls = handler_msg_cls
         self.running = True
         self.logger = logger
@@ -23,9 +23,9 @@ class ConsumerKafka:
         self._stop_event = asyncio.Event()
 
         self.consumer = AIOKafkaConsumer(
-            self.topic,
+            *self.topics,
             bootstrap_servers=self.conf.env.kafka_bootstrap_servers,
-            group_id=f"storage-group-{time.time()}",
+            group_id=f"storage-service-group",
             retry_backoff_ms=2000,
             auto_offset_reset="earliest",
             enable_auto_commit=False,

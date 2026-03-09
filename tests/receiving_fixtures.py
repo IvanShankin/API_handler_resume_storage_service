@@ -95,7 +95,7 @@ async def create_requirement(requirement_service_fix, create_user, session_db):
         new_requirement = await requirement_service_fix.create_requirement(
             requirement_id=next_id,
             user_id=user_id,
-            requirements="Тестовое требование",
+            requirement="Тестовое требование",
         )
 
         return new_requirement
@@ -208,6 +208,6 @@ async def kafka_event_handler_fix(
             redis_session=get_redis(),
             config=conf,
         ),
-        logger=get_logger(__name__),
+        logger=get_logger(),
         config=conf,
     )

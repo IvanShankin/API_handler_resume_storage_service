@@ -21,7 +21,7 @@ class TestEventHandlerKafka:
                 full_name="full_name",
                 created_at=datetime.now(UTC)
             ).model_dump(),
-            key=kafka_event_handler_fix.conf.consumer_keys.new_user,
+            topic=kafka_event_handler_fix.conf.kafka_topics.user_created,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -48,7 +48,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.new_resume,
+            topic=kafka_event_handler_fix.conf.kafka_topics.resume_created,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -73,7 +73,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.new_requirements,
+            topic=kafka_event_handler_fix.conf.kafka_topics.requirements_created,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -101,7 +101,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.new_processing,
+            topic=kafka_event_handler_fix.conf.kafka_topics.processing_created,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -120,7 +120,7 @@ class TestEventHandlerKafka:
         ).model_dump()
         msg_success = FakeKafkaMessage(
             data=payload_success,
-            key=kafka_event_handler_fix.conf.consumer_keys.end_processing,
+            topic=kafka_event_handler_fix.conf.kafka_topics.processing_finished,
         )
         await kafka_event_handler_fix.handler_messages(msg_success)
 
@@ -138,7 +138,7 @@ class TestEventHandlerKafka:
         ).model_dump()
         msg_failed = FakeKafkaMessage(
             data=payload_failed,
-            key=kafka_event_handler_fix.conf.consumer_keys.end_processing,
+            topic=kafka_event_handler_fix.conf.kafka_topics.processing_finished,
             offset=2
         )
         await kafka_event_handler_fix.handler_messages(msg_failed)
@@ -163,7 +163,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.delete_resumes,
+            topic=kafka_event_handler_fix.conf.kafka_topics.resumes_deleted,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -184,7 +184,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.delete_processing,
+            topic=kafka_event_handler_fix.conf.kafka_topics.processing_deleted,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -213,7 +213,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.delete_requirements,
+            topic=kafka_event_handler_fix.conf.kafka_topics.requirements_deleted,
         )
 
         await kafka_event_handler_fix.handler_messages(msg)
@@ -233,7 +233,7 @@ class TestEventHandlerKafka:
 
         msg = FakeKafkaMessage(
             data=payload,
-            key=kafka_event_handler_fix.conf.consumer_keys.new_user,
+            topic=kafka_event_handler_fix.conf.kafka_topics.user_created,
         )
 
         # первый вызов — создаст пользователя

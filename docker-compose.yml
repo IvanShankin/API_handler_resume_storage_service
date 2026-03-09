@@ -12,7 +12,6 @@ services:
       - REDIS_PORT=${REDIS_PORT}
 
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - TOPIC_UPLOADING_DATA=${TOPIC_UPLOADING_DATA}
 
       # данные для подключения к БД
       - DB_HOST=db

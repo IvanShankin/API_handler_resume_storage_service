@@ -24,7 +24,7 @@ async def set_admin_client(admin: AIOKafkaAdminClient):
     _admin_client = admin
 
 
-async def get_admin_client() -> AIOKafkaAdminClient:
+def get_admin_client() -> AIOKafkaAdminClient:
     global _admin_client
     if _admin_client is None:
         raise RuntimeError("Admin client not initialized")

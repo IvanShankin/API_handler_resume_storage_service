@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from typing import List
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, AsyncEngine
@@ -20,7 +21,7 @@ class Config:
         self.db_connection = DbConnectionConfig.build(self.env)
         self.paths = PathsConfig.build()
         self.tokens = TokensConfig.build()
-        self.consumer_keys = ConsumerKeys.build()
+        self.kafka_topics = KafkaTopics.build()
         self.lifespan_redis = LifespanInRedis.build()
 
 
@@ -33,7 +34,6 @@ class EnvConfig(BaseModel):
     db_password: str
     db_name: str
 
-    topic_uploading_data: str
     kafka_bootstrap_servers: str
 
     redis_host: str
@@ -51,7 +51,6 @@ class EnvConfig(BaseModel):
             db_password=os.environ['DB_PASSWORD'],
             db_name=os.environ['DB_NAME'],
 
-            topic_uploading_data=os.environ['TOPIC_UPLOADING_DATA'],
             kafka_bootstrap_servers=os.environ['KAFKA_BOOTSTRAP_SERVERS'],
 
             redis_host=os.environ['REDIS_HOST'],
@@ -127,30 +126,39 @@ class TokensConfig(BaseModel):
         )
 
 
-class ConsumerKeys(BaseModel):
-    new_user: str
-    new_resume: str
-    new_requirements: str
-    new_processing: str
 
-    end_processing: str
+class KafkaTopics(BaseModel):
+    user_created: str
+    resume_created: str
+    requirements_created: str
+    processing_created: str
 
-    delete_processing: str
-    delete_resumes: str
-    delete_requirements: str
+    processing_finished: str
+
+    processing_deleted: str
+    resumes_deleted: str
+    requirements_deleted: str
+
+    all_topics: List[str]
 
     @classmethod
-    def build(cls) -> "ConsumerKeys":
+    def build(cls) -> "KafkaTopics":
         return cls(
-            new_user='new_user',
-            new_resume='new_resume',
-            new_requirements='new_requirement',
-            new_processing='new_processing',
-            end_processing='end_processing',
+            user_created='user.created',
+            resume_created='resume.created',
+            requirements_created='requirement.created',
+            processing_created='processing.requested',
 
-            delete_processing='delete_processing',
-            delete_resumes='delete_resumes',
-            delete_requirements='delete_requirements'
+            processing_finished="processing.finished",
+
+            processing_deleted='processing.deleted',
+            resumes_deleted='resume.deleted',
+            requirements_deleted='requirement.deleted',
+
+            all_topics=[
+                'user.created', 'resume.created', 'requirement.created', 'processing.requested', 'processing.finished',
+                'processing.deleted', 'resume.deleted', 'requirement.deleted',
+            ]
         )
 
 

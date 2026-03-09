@@ -28,7 +28,7 @@ async def start_test():
     await create_database()
     await set_redis(fakeredis.aioredis.FakeRedis())
     await set_admin_client(FakeAdminClient())
-    await check_exists_topic(conf.env.topic_uploading_data)
+    await check_exists_topic(conf.kafka_topics.all_topics)
 
     init_fastapi_app()
 

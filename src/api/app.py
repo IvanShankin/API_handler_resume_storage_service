@@ -6,7 +6,7 @@ from src.api.exception_handler import register_exception_handlers
 from src.api.requests import main_router
 from src.database.creating import create_database
 from src.infrastructure.kafka.admin_client import init_admin_client, shutdown_admin_client
-from src.infrastructure.kafka.consumers.run_consumers import run_consumer_by_uploading_topic
+from src.infrastructure.kafka.consumers.run_consumers import run_consumer
 from src.infrastructure.kafka.topic_manager import check_exists_topic
 from src.infrastructure.redis import init_redis, close_redis
 from src.service.config import init_config
@@ -46,8 +46,8 @@ async def lifespan(app: FastAPI):
 
     await create_database()
 
-    await check_exists_topic(conf.env.topic_uploading_data)
-    consumer_runner = await run_consumer_by_uploading_topic()
+    await check_exists_topic(conf.kafka_topics.all_topics)
+    consumer_runner = await run_consumer()
 
     try:
         yield

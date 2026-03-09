@@ -1,3 +1,5 @@
+from typing import List
+
 from aiokafka.admin import NewTopic
 
 from src.infrastructure.kafka.admin_client import get_admin_client
@@ -9,10 +11,10 @@ async def create_topic(
     num_partitions: int = 1,
     replication_factor: int = 1
 ):
-    logger = get_logger(__name__)
+    logger = get_logger()
 
     try:
-        admin = await get_admin_client()
+        admin = get_admin_client()
         topic = NewTopic(
             name=topic_name,
             num_partitions=num_partitions,
@@ -28,12 +30,13 @@ async def create_topic(
             logger.exception(f"Topic creation error: {e}")
 
 
-async def check_exists_topic(topic_name: str):
-    """Проверит наличие топика, если его нет, то создаст"""
-    admin = await get_admin_client()
+async def check_exists_topic(topics_name: List[str]):
+    """Проверит наличие топиков, если нет, то создаст"""
+    admin = get_admin_client()
     metadata = await admin.list_topics()
 
-    if topic_name not in metadata:
-        await create_topic(topic_name)
+    for topic in topics_name:
+        if topic not in metadata:
+            await create_topic(topic)
 
-    get_logger(__name__).info(f"Topic already exists: {topic_name}")
+        get_logger().info(f"Topic already exists: {topic}")

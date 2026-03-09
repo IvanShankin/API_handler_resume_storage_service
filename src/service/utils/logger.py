@@ -25,8 +25,8 @@ def setup_logging(log_file: Path, level: int = logging.INFO) -> None:
         root_logger.addHandler(stream_handler)
 
 
-def get_logger(name: str) -> logging.Logger:
-    logger = logging.getLogger(name)
+def get_logger() -> logging.Logger:
+    logger = logging.getLogger(__name__)
     logger.propagate = True  # чтобы сообщения шли к root
     return logger
 

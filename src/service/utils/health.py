@@ -13,7 +13,7 @@ async def health_check_service() -> Dict:
         async for session_db in get_db():
             await session_db.execute(text("SELECT 1"))
     except Exception as e:
-        get_logger(__name__).exception("Database connection failed")
+        get_logger().exception("Database connection failed")
         raise RedisError() from e
 
 
@@ -21,7 +21,7 @@ async def health_check_service() -> Dict:
         async with get_redis() as redis_client:
             await redis_client.ping()
     except Exception as e:
-        get_logger(__name__).error(f"Redis connection failed: {e}")
+        get_logger().error(f"Redis connection failed: {e}")
         raise DatabaseError() from e
 
     return {"status": "OK"}

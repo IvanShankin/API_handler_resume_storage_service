@@ -10,7 +10,7 @@ from src.service.utils.logger import get_logger
 class ConsumerRunner:
     def __init__(self, consumer: ConsumerKafka):
         self.consumer = consumer
-        self.logger = get_logger(__name__)
+        self.logger = get_logger()
         self._task: Optional[asyncio.Task] = None
 
     async def start(self):
@@ -35,13 +35,13 @@ class ConsumerRunner:
         await self._task
 
 
-async def run_consumer_by_uploading_topic() -> ConsumerRunner:
+async def run_consumer() -> ConsumerRunner:
     conf = get_config()
 
     consumer = ConsumerKafka(
-        topic=conf.env.topic_uploading_data,
+        topics=conf.kafka_topics.all_topics,
         handler_msg_cls=get_kafka_event_handler_service(),
-        logger=get_logger(__name__),
+        logger=get_logger(),
         config=conf
     )
 
