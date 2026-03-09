@@ -70,7 +70,12 @@ class KafkaEventHandlerService:
         elif key == self.conf.consumer_keys.new_processing:
             new_processing = NewProcessing(**data)
             try:
-                await self.processing_service.create_processing(**(new_processing.model_dump()))
+                await self.processing_service.create_processing(
+                    processing_id=new_processing.processing_id,
+                    resume_id=new_processing.resume_id,
+                    requirement_id=new_processing.requirement_id,
+                    user_id=new_processing.user_id,
+                )
             except InsertionErrorService:
                 self.logger.warning(
                     f"Обработка с данным ID = {new_processing.processing_id} не будет добавлен. "

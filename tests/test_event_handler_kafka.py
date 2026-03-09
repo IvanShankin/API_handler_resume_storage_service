@@ -95,6 +95,8 @@ class TestEventHandlerKafka:
             resume_id=resume.resume_id,
             requirement_id=resume.requirement_id,
             user_id=resume.user_id,
+            resume="тестовое резюме",
+            requirement="тестовое требование",
         ).model_dump()
 
         msg = FakeKafkaMessage(

@@ -1,5 +1,4 @@
 import fakeredis
-import pytest
 import pytest_asyncio
 
 from sqlalchemy import delete

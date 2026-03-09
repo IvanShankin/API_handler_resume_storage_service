@@ -21,7 +21,7 @@ def _include_router(app: FastAPI):
 def init_fastapi_app() -> FastAPI:
     global _app
     app = FastAPI(
-        title="Auth Service",
+        title="Storage Service",
         lifespan=lifespan
     )
     _include_router(app)

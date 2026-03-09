@@ -30,6 +30,8 @@ class NewProcessing(BaseModel):
     resume_id: int
     requirement_id: int
     user_id: int
+    resume: str
+    requirement: str
 
 
 class EndProcessingReceived(BaseModel):
