@@ -36,8 +36,17 @@ class ConsumerKafka:
             f"Ошибка при обработке сообщения из Kafka: {str(e)}"
         )
 
+    async def _start_consumer(self):
+        while True:
+            try:
+                await self.consumer.start()
+                self.logger.info("Успешно подключились к Kafka")
+            except Exception:
+                self.logger.exception("Неудачная попытка запуска Kafka Consumer")
+                await asyncio.sleep(5)
+
     async def run_consumer(self):
-        await self.consumer.start()
+        await self._start_consumer()
         msg_count = 0
 
         try:
