@@ -41,8 +41,13 @@ class ConsumerKafka:
             try:
                 await self.consumer.start()
                 self.logger.info("Успешно подключились к Kafka")
+                break
             except Exception:
                 self.logger.exception("Неудачная попытка запуска Kafka Consumer")
+                try:
+                    await self.consumer.stop()
+                except Exception:
+                    pass
                 await asyncio.sleep(5)
 
     async def run_consumer(self):
