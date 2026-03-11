@@ -1,9 +1,9 @@
 import asyncio
 from typing import Optional
 
+from src.container.app_container import get_container
 from src.infrastructure.kafka.consumers.consumer import ConsumerKafka
 from src.service.config import get_config
-from src.service.kafka import get_kafka_event_handler_service
 from src.service.utils.logger import get_logger
 
 
@@ -37,10 +37,11 @@ class ConsumerRunner:
 
 async def run_consumer() -> ConsumerRunner:
     conf = get_config()
+    container = get_container()
 
     consumer = ConsumerKafka(
         topics=conf.kafka_topics.all_topics,
-        handler_msg_cls=get_kafka_event_handler_service(),
+        handler_msg_cls=await container.get_event_handler_service(),
         logger=get_logger(),
         config=conf
     )
