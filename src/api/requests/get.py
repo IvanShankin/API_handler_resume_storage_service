@@ -14,7 +14,7 @@ from src.service.users import UserService, get_users_service
 from src.service.utils.health import health_check_service
 
 
-router = APIRouter(prefix="/storage")
+router = APIRouter()
 
 
 @router.get("/health")

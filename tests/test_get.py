@@ -9,14 +9,14 @@ from src.schemas.response import UserOut, ResumeOut, RequirementsOut, Processing
 async def test_health_check(
     client_with_db
 ):
-    response = await client_with_db.get("storage/health")
+    response = await client_with_db.get("/health")
     assert response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_me(client_with_db, create_user):
     user, accesses_token = await create_user()
-    response = await client_with_db.get("storage/me", headers={"Authorization": f"Bearer {accesses_token}"})
+    response = await client_with_db.get("/me", headers={"Authorization": f"Bearer {accesses_token}"})
 
     assert response.status_code == 200
 
@@ -32,7 +32,7 @@ async def test_get_resume(resume_service_fix, create_resume, create_user, client
     new_resume = await create_resume(user.user_id)
 
     response = await client_with_db.get(
-        "storage/get_resume",
+        "/get_resume",
         headers={"Authorization": f"Bearer {accesses_token}"},
         params = {'resume_id': new_resume.resume_id},
     )
@@ -68,7 +68,7 @@ async def test_get_resume_by_requirement(
         await resume_service_fix.resume_cache_repo.delete_by_requirement(requirement.requirement_id)
 
     response = await client_with_db.get(
-        "storage/get_resume_by_requirement",
+        "get_resume_by_requirement",
         headers={"Authorization": f"Bearer {accesses_token}"},
         params = {'requirement_id': requirement.requirement_id},
     )
@@ -96,7 +96,7 @@ async def test_get_requirements(create_user, client_with_db, create_requirement)
     new_requirement = await create_requirement(user.user_id)
 
     response = await client_with_db.get(
-        f"storage/get_requirement/{new_requirement.requirement_id}",
+        f"/get_requirement/{new_requirement.requirement_id}",
         headers={"Authorization": f"Bearer {accesses_token}"},
     )
 
@@ -128,7 +128,7 @@ async def test_get_requirements(
         await requirement_service_fix.requirement_cache_repo.delete_by_user(user.user_id)
 
     response = await client_with_db.get(
-        "storage/get_requirements",
+        "/get_requirements",
         headers={"Authorization": f"Bearer {accesses_token}"},
     )
 
@@ -155,7 +155,7 @@ async def test_get_processing_by_resume(create_user, client_with_db, create_resu
     processing = await create_processing(user_id=user.user_id)
 
     response = await client_with_db.get(
-        f"storage/get_processing_by_resume/{processing.resume_id}",
+        f"/get_processing_by_resume/{processing.resume_id}",
         headers={"Authorization": f"Bearer {accesses_token}"},
     )
 
@@ -171,7 +171,7 @@ async def test_check_exceptions(create_user, client_with_db):
     user, accesses_token = await create_user()
 
     response = await client_with_db.get(
-        f"storage/get_processing_by_resume/1",
+        f"/get_processing_by_resume/1",
         headers={"Authorization": f"Bearer {accesses_token}"},
     )
 
@@ -179,6 +179,6 @@ async def test_check_exceptions(create_user, client_with_db):
     assert response.status_code == 404
 
     response = await client_with_db.get(
-        f"storage/get_processing_by_resume/1",
+        f"/get_processing_by_resume/1",
     )
     assert response.status_code == 401
