@@ -28,7 +28,7 @@ class ResumeOut(BaseModel):
 class RequirementsOut(BaseModel):
     requirement_id: int
     user_id: int
-    requirements: str
+    requirement: str
 
     model_config = ConfigDict(from_attributes=True)
 

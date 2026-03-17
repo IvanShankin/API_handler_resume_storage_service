@@ -77,6 +77,8 @@ class ResumeService:
                 # flush чтобы поймать IntegrityError здесь
                 await self.session_db.flush()
 
+            await self.session_db.commit()
+
         except IntegrityError as e:
             raise InsertionErrorService() from e
 
@@ -129,6 +131,7 @@ class ResumeService:
     async def delete_resume(self, resume_ids: List[int], requirement_ids: List[int], processing_ids: List[int]) -> None:
         await self.processing_service.delete_processing(processing_ids=processing_ids, resume_ids=resume_ids)
         await self.resume_repo.delete_resume(resume_ids=resume_ids)
+        await self.session_db.commit()
 
         for requirement_id in requirement_ids:
             await self.resume_cache_repo.set_by_requirement(

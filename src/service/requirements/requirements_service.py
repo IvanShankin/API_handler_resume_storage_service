@@ -51,11 +51,13 @@ class RequirementService:
                 requirement_db = await self.requirement_repo.add_requirement(
                     requirement_id=requirement_id,
                     user_id=user_id,
-                    requirements=requirement,
+                    requirement=requirement,
                 )
 
                 # flush чтобы поймать IntegrityError здесь
                 await self.session_db.flush()
+
+            await self.session_db.commit()
 
         except IntegrityError as e:
             raise IDAlreadyExists() from e
@@ -113,6 +115,7 @@ class RequirementService:
             processing_ids=processing_ids
         )
         await self.requirement_repo.delete_requirements(requirement_ids=requirement_ids)
+        await self.session_db.commit()
 
         await self.requirement_cache_repo.set_by_user(
             user_id=user_id,

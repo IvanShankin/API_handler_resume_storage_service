@@ -93,6 +93,8 @@ class UserService:
                 # flush чтобы поймать IntegrityError здесь
                 await self.session_db.flush()
 
+            await self.session_db.commit()
+
         except IntegrityError as e:
             raise IDAlreadyExists() from e
 

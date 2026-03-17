@@ -17,12 +17,12 @@ class RequirementRepository:
         self,
         requirement_id: int,
         user_id: int,
-        requirements: str,
+        requirement: str,
     ) -> Requirements:
         new_requirement = Requirements(
             requirement_id=requirement_id,
             user_id=user_id,
-            requirements=requirements,
+            requirement=requirement,
         )
 
         self.session_db.add(new_requirement)

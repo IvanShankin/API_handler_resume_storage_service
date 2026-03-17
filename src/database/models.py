@@ -43,7 +43,7 @@ class Requirements(Base):
     __tablename__ = "requirements"
     requirement_id = Column(Integer, primary_key=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
-    requirements = Column(String(10000), nullable=False)
+    requirement = Column(String(10000), nullable=False)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

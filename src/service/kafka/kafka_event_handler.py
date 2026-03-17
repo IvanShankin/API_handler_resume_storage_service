@@ -54,6 +54,7 @@ class KafkaEventHandlerService:
         new_user_data = NewUser(**data)
         try:
             await self.user_service.create_user(**(new_user_data.model_dump()))
+            self.logger.info(f"Создан пользователь. ID={new_user_data.user_id}")
         except IDAlreadyExists:
             self.logger.warning(
                 f"пользователь с данным ID = {new_user_data.user_id} уже имеется и не будет добавлен"
@@ -63,6 +64,7 @@ class KafkaEventHandlerService:
         new_resume_data = NewResume(**data)
         try:
             await self.resume_service.create_resume(**(new_resume_data.model_dump()))
+            self.logger.info(f"Создано резюме. ID={new_resume_data.resume_id}")
         except InsertionErrorService:
             self.logger.warning(
                 f"Резюме с данным ID = {new_resume_data.resume_id} не будет добавлен. "
@@ -73,10 +75,12 @@ class KafkaEventHandlerService:
         new_requirement_data = NewRequirement(**data)
         try:
             await self.requirement_service.create_requirement(**(new_requirement_data.model_dump()))
+            self.logger.info(f"Создано требование. ID={new_requirement_data.requirement_id}")
         except IDAlreadyExists:
             self.logger.warning(
                 f"Требование с ID = {new_requirement_data.requirement_id} уже имеется и не будет добавлено"
             )
+
 
     async def _processing_created(self, data: dict):
         new_processing = NewProcessing(**data)
@@ -87,6 +91,7 @@ class KafkaEventHandlerService:
                 requirement_id=new_processing.requirement_id,
                 user_id=new_processing.user_id,
             )
+            self.logger.info(f"Создана обработка. ID={new_processing.processing_id}")
         except InsertionErrorService:
             self.logger.warning(
                 f"Обработка с данным ID = {new_processing.processing_id} не будет добавлен. "
@@ -99,23 +104,28 @@ class KafkaEventHandlerService:
             **data
         )
         await self.processing_service.update_processing(**(new_user_data.model_dump()))
+        self.logger.info(f"обновлена обработка. ID={new_user_data.processing_id}")
 
     async def _resumes_deleted(self, data: dict):
         data_for_deleting = DeleteResume(**data)
         await self.resume_service.delete_resume(**(data_for_deleting.model_dump()))
+        self.logger.info(f"Удалено резюме. IDs={data_for_deleting.resume_ids}")
 
     async def _processing_deleted(self, data: dict):
         data_for_deleting = DeleteProcessing(**data)
         await self.processing_service.delete_processing(**(data_for_deleting.model_dump()))
+        self.logger.info(f"Удалена обработка. IDs={data_for_deleting.processing_ids}")
 
     async def _requirements_deleted(self, data: dict):
         data_for_deleting = DeleteRequirements(**data)
         await self.requirement_service.delete_requirement(**(data_for_deleting.model_dump()))
+        self.logger.info(f"Удалено требование. IDs={data_for_deleting.requirement_ids}")
 
     async def handler_messages(self, msg):
         """
         :return: Успех обработки. Если уже было обработанно ранее, то вернёт False
         """
+        self.logger.info(f"Получено новое сообщение от kafka")
         message_id = self._get_message_uid(msg)
 
         if await self.kafka_message_cache.get(message_id):

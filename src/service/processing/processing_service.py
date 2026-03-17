@@ -59,6 +59,8 @@ class ProcessingService:
                 # flush чтобы поймать IntegrityError здесь
                 await self.session_db.flush()
 
+            await self.session_db.commit()
+
         except IntegrityError as e:
             raise InsertionErrorService() from e
 
@@ -71,24 +73,23 @@ class ProcessingService:
         :raise ResourceNotFound: Если данные не найдены
         """
         processing_redis = await self.processing_cache_repo.get_by_resume(resume_id=resume_id)
-        if not processing_redis:
-            processing_db = await self.processing_repo.get_by_resume(resume_id=resume_id)
-
-            if processing_db:
-                self._check_rights(processing_db.user_id, user_id)
-                await self.processing_cache_repo.set_by_resume(processing_db)
-                return processing_db
-
-            raise ResourceNotFound()
 
         if processing_redis:
             self._check_rights(processing_redis.user_id, user_id)
             return processing_redis
 
+        processing_db = await self.processing_repo.get_by_resume(resume_id=resume_id)
+
+        if processing_db:
+            self._check_rights(processing_db.user_id, user_id)
+            await self.processing_cache_repo.set_by_resume(processing_db)
+            return processing_db
+
         raise ResourceNotFound()
 
     async def delete_processing(self, processing_ids: List[int], resume_ids: List[int]):
         await self.processing_repo.delete_processing(processing_ids)
+        await self.session_db.commit()
         await self.processing_cache_repo.delete_by_resume(resume_ids)
 
     async def update_processing(

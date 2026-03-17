@@ -78,7 +78,7 @@ async def get_requirements(
 
 
 @router.get('/get_processing_by_resume/{resume_id}', response_model=ProcessingOut)
-async def get_processing_detail_by_resume(
+async def get_processing_by_resume(
     resume_id: int = Path(..., ge=1, description="ID резюме у которого будет браться обработка"),
     current_user: Users = Depends(get_current_user),
     processing_service: ProcessingService = Depends(get_processing_service)
